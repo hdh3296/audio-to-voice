@@ -41,7 +41,12 @@ async def test_gpt_correction():
         {
             'start': 5, 
             'end': 10, 
-            'text': '이것은 테스트 문장입니다.'
+            'text': '이것은 콘사이스 바이블의 메뉴얼입니다.'
+        },
+        {
+            'start': 10,
+            'end': 15,
+            'text': '이 시스템은 컴퓨터와 인터넷을 사용합니다.'
         }
     ]
     
@@ -77,6 +82,10 @@ async def test_gpt_correction():
                         print(f"    🎯 '줄거래' → '줄거리' 교정됨!")
                     if '읽기쉽게' in original['text'] and '읽기 쉽게' in corrected['text']:
                         print(f"    🎯 띄어쓰기 교정됨!")
+                    if '콘사이스' in original['text'] and '컨사이스' in corrected['text']:
+                        print(f"    🎯 '콘사이스' → '컨사이스' 외래어 표기법 교정됨!")
+                    if '메뉴얼' in original['text'] and '매뉴얼' in corrected['text']:
+                        print(f"    🎯 '메뉴얼' → '매뉴얼' 외래어 표기법 교정됨!")
                 else:
                     print(f"    변경: ❌ 아니오")
         else:
@@ -88,10 +97,10 @@ async def test_gpt_correction():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("🧪 GPT 후처리 직접 테스트 시작")
-    print("=" * 50)
+    print("🧪 GPT-4.1 mini 후처리 직접 테스트 시작 (외래어 표기법 포함)")
+    print("=" * 60)
     
     asyncio.run(test_gpt_correction())
     
-    print("\\n" + "=" * 50)
+    print("\\n" + "=" * 60)
     print("🏁 테스트 완료")
