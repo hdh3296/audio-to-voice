@@ -31,7 +31,7 @@ class Phase2PostProcessor:
             try:
                 self.client = AsyncOpenAI(api_key=self.api_key)
                 self.is_enabled = True
-                logger.info("✅ Phase 2 GPT 후처리 모듈 초기화 완료")
+                logger.info("✅ Phase 2 GPT-4.1 mini 후처리 모듈 초기화 완료")
             except Exception as e:
                 logger.error(f"❌ Phase 2 GPT 후처리 모듈 초기화 실패: {e}")
                 self.is_enabled = False
@@ -71,14 +71,14 @@ class Phase2PostProcessor:
         start_time = datetime.now()
         
         try:
-            logger.info(f"🤖 Phase 2 GPT 후처리 시작: {len(segments)}개 세그먼트")
+            logger.info(f"🤖 Phase 2 GPT-4.1 mini 후처리 시작: {len(segments)}개 세그먼트")
             
             # WebSocket으로 진행률 전송
             if websocket:
                 await self._send_progress(websocket, {
                     "stage": "gpt_postprocessing",
                     "progress": 0,
-                    "message": "GPT 후처리 시작...",
+                    "message": "GPT-4.1 mini 후처리 시작...",
                     "session_id": session_id
                 })
             
@@ -147,11 +147,11 @@ class Phase2PostProcessor:
                 await self._send_progress(websocket, {
                     "stage": "gpt_postprocessing",
                     "progress": 100,
-                    "message": f"GPT 후처리 완료! {total_corrections}개 항목 교정됨",
+                    "message": f"GPT-4.1 mini 후처리 완료! {total_corrections}개 항목 교정됨",
                     "session_id": session_id
                 })
             
-            logger.info(f"✅ Phase 2 GPT 후처리 완료: {total_corrections}개 교정, {processing_time:.2f}초")
+            logger.info(f"✅ Phase 2 GPT-4.1 mini 후처리 완료: {total_corrections}개 교정, {processing_time:.2f}초")
             
             return {
                 "success": True,
@@ -166,13 +166,13 @@ class Phase2PostProcessor:
             }
             
         except Exception as e:
-            logger.error(f"❌ Phase 2 GPT 후처리 실패: {e}")
+            logger.error(f"❌ Phase 2 GPT-4.1 mini 후처리 실패: {e}")
             
             if websocket:
                 await self._send_progress(websocket, {
                     "stage": "gpt_postprocessing",
                     "progress": 0,
-                    "message": f"GPT 후처리 실패: {str(e)}",
+                    "message": f"GPT-4.1 mini 후처리 실패: {str(e)}",
                     "error": True,
                     "session_id": session_id
                 })
@@ -191,7 +191,7 @@ class Phase2PostProcessor:
         if not quality_metrics:
             return {
                 "name": "표준 교정",
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "temperature": 0.1,
                 "focus": "전반적인 맞춤법과 띄어쓰기"
             }
@@ -203,28 +203,28 @@ class Phase2PostProcessor:
         if overall_score >= 0.9:
             return {
                 "name": "정밀 교정",
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "temperature": 0.05,
                 "focus": "세밀한 문법과 자연스러운 표현"
             }
         elif korean_score < 0.7:
             return {
                 "name": "한국어 집중 교정",
-                "model": "gpt-4o-mini", 
+                "model": "gpt-4.1-mini", 
                 "temperature": 0.1,
                 "focus": "한국어 표현과 어휘 개선"
             }
         elif grammar_score < 0.6:
             return {
                 "name": "문법 집중 교정",
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "temperature": 0.1,
                 "focus": "문법 오류와 문장 구조 개선"
             }
         else:
             return {
                 "name": "균형 교정",
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "temperature": 0.1,
                 "focus": "맞춤법, 띄어쓰기, 자연스러운 표현"
             }
@@ -262,17 +262,21 @@ class Phase2PostProcessor:
 
 **교정 전략: {strategy['focus']}**
 
-**교정 원칙 (반드시 적용):**
+**교정 원칙 (GPT-4.1 mini 최적화):**
 1. 🔥 **음성학적 오류 수정**: "줄거래" → "줄거리", "되요" → "돼요", "할께요" → "할게요"
 2. 🔥 **띄어쓰기 정규화**: "할수있다" → "할 수 있다", "읽기쉽게" → "읽기 쉽게"
 3. 🔥 **맞춤법 교정**: 표준 한국어 맞춤법 준수
 4. 🔥 **자연스러운 표현**: 구어체를 자연스러운 문어체로
 5. 🔥 **원본 의미 절대 보존**: 의미를 변경하지 마세요
+6. 🆕 **문맥 이해 강화**: 앞뒤 문맥을 고려한 정확한 교정
+7. 🆕 **일관성 유지**: 전체 텍스트의 톤과 스타일 일관성
 
-**특별 주의사항:**
+**특별 주의사항 (GPT-4.1 mini 전용):**
 - "줄거래"는 반드시 "줄거리"로 교정
 - "읽기쉽게"는 반드시 "읽기 쉽게"로 교정
-- 모든 음성 인식 오류를 찾아서 수정
+- 모든 음성 인식 오류를 정확히 감지하고 수정
+- 긴 텍스트에서도 일관된 품질 유지
+- 복잡한 문장 구조도 자연스럽게 개선
 
 **입력 형식:** [번호] 텍스트
 **출력 형식:** 동일한 번호로 교정된 텍스트만 출력
