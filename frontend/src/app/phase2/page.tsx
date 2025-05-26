@@ -532,7 +532,7 @@ const Phase2AudioProcessor = () => {
             {result.transcript && (
               <div className="space-y-2">
                 <h4 className="font-medium">전사 결과:</h4>
-                <div className="p-3 bg-gray-50 rounded text-sm max-h-40 overflow-y-auto">
+                <div className="p-3 bg-white border border-gray-200 rounded text-sm max-h-40 overflow-y-auto text-gray-900">
                   {result.transcript}
                 </div>
               </div>
