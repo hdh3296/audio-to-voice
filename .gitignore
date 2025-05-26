@@ -1,0 +1,57 @@
+# 의존성 및 빌드 파일
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js 빌드 파일
+.next/
+out/
+build/
+
+# Python 가상환경
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 업로드 및 출력 파일
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# 환경변수
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE 및 에디터
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 운영체제
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 로그 파일
+*.log
+
+# 임시 파일
+*.tmp
+*.temp
