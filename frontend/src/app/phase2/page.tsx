@@ -59,6 +59,7 @@ const Phase2AudioProcessor = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileId, setFileId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('whisper-1-optimized');
+  const [enableGptPostprocessing, setEnableGptPostprocessing] = useState<boolean>(true);  // 🆕 GPT 후처리 기본값을 true로 변경
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [result, setResult] = useState<any>(null);
@@ -158,6 +159,7 @@ const Phase2AudioProcessor = () => {
         background_color: 'black',
         enable_quality_analysis: 'true',
         enable_auto_reprocessing: 'true',
+        enable_gpt_postprocessing: enableGptPostprocessing.toString(),  // 🆕 GPT 후처리 옵션 전달
         target_quality: '0.8'
       })
     });
@@ -368,6 +370,49 @@ const Phase2AudioProcessor = () => {
               </div>
             </div>
 
+            {/* 🆕 GPT 후처리 옵션 */}
+            {processingMode === 'advanced' && (
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-blue-900">🤖 GPT 후처리</label>
+                      <Badge variant="secondary" className="text-xs">새로운 기능!</Badge>
+                    </div>
+                    <p className="text-xs text-blue-700">
+                      AI로 맞춤법, 띄어쓰기, 자연스러운 표현을 교정합니다
+                    </p>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="gpt-postprocessing"
+                      checked={enableGptPostprocessing}
+                      onChange={(e) => setEnableGptPostprocessing(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label 
+                      htmlFor="gpt-postprocessing" 
+                      className="ml-2 text-sm font-medium text-blue-900 cursor-pointer"
+                    >
+                      사용
+                    </label>
+                  </div>
+                </div>
+                
+                {enableGptPostprocessing && (
+                  <div className="mt-3 p-3 bg-white rounded border border-blue-100">
+                    <div className="text-xs text-blue-800 space-y-1">
+                      <p>✅ 한국어 맞춤법 자동 교정</p>
+                      <p>✅ 자연스러운 띄어쓰기 정규화</p>
+                      <p>✅ 구어체 → 문어체 자연 변환</p>
+                      <p>⚠️ 추가 처리 시간: +10-30초</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2 mt-4">
               <Button 
                 onClick={processAudio} 
@@ -464,7 +509,17 @@ const Phase2AudioProcessor = () => {
                   {result.reprocessed && (
                     <Badge variant="outline" className="ml-2">재처리됨</Badge>
                   )}
+                  {result.gpt_correction_applied && (
+                    <Badge variant="secondary" className="ml-2">GPT교정됨</Badge>
+                  )}
                 </p>
+                {/* 🆕 GPT 후처리 결과 표시 */}
+                {result.gpt_correction_applied && (
+                  <div className="mt-2 text-xs text-green-700">
+                    🤖 {result.total_corrections}개 항목이 교정되었습니다 
+                    ({result.correction_strategy})
+                  </div>
+                )}
               </div>
               <Button asChild>
                 <a href={`${API_BASE}${result.download_url}`} download>
@@ -479,6 +534,38 @@ const Phase2AudioProcessor = () => {
                 <h4 className="font-medium">전사 결과:</h4>
                 <div className="p-3 bg-gray-50 rounded text-sm max-h-40 overflow-y-auto">
                   {result.transcript}
+                </div>
+              </div>
+            )}
+
+            {/* 🆕 GPT 후처리 세부 정보 */}
+            {result.gpt_correction_applied && result.gpt_improvements && (
+              <div className="space-y-2">
+                <h4 className="font-medium flex items-center gap-2">
+                  🤖 GPT 후처리 결과
+                  <Badge variant="secondary" className="text-xs">
+                    품질 점수: {(result.gpt_quality_score * 100).toFixed(0)}%
+                  </Badge>
+                </h4>
+                <div className="p-3 bg-blue-50 rounded border border-blue-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="font-medium text-blue-900">교정 통계:</p>
+                      <ul className="text-blue-800 space-y-1 mt-1">
+                        <li>• 교정된 항목: {result.total_corrections}개</li>
+                        <li>• 교정 전략: {result.correction_strategy}</li>
+                        <li>• 처리 시간: {result.gpt_processing_time?.toFixed(1)}초</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-medium text-blue-900">개선 내용:</p>
+                      <ul className="text-blue-800 space-y-1 mt-1">
+                        {result.gpt_improvements.slice(0, 3).map((improvement, index) => (
+                          <li key={index}>• {improvement}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
