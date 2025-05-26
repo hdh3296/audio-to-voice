@@ -82,12 +82,12 @@ async def upload_audio(file: UploadFile = File(...)):
 @app.post("/generate-subtitles/{file_id}")
 async def generate_subtitles(
     file_id: str,
-    model: str = "small",
-    language: Optional[str] = None,
+    model: str = "large-v3",  # 한국어 정확도 향상을 위해 large-v3 기본값
+    language: Optional[str] = "ko",  # 한국어 기본 설정
     task: str = "transcribe",
     background_color: str = "black"
 ):
-    """자막 생성 및 비디오 생성 (업데이트된 버전)"""
+    """한국어 자막 생성 및 비디오 생성 (한국어 최적화)"""
     try:
         # 업로드된 파일 찾기
         uploaded_files = list(UPLOADS_DIR.glob(f"{file_id}.*"))
@@ -97,7 +97,9 @@ async def generate_subtitles(
         input_file = uploaded_files[0]
         output_file = OUTPUTS_DIR / f"{file_id}_subtitled.mp4"
         
-        # auto_subtitle를 사용하여 비디오 생성
+        print(f"🎯 한국어 음성 처리 시작 - 모델: {model}")
+        
+        # auto_subtitle를 사용하여 한국어 최적화 비디오 생성
         result = auto_subtitle.process_audio_to_video(
             audio_path=str(input_file),
             output_path=str(output_file),
@@ -117,11 +119,14 @@ async def generate_subtitles(
             "transcript": result["transcript"],
             "segments_count": result["segments_count"],
             "language": result["language"],
-            "message": "자막 비디오가 성공적으로 생성되었습니다."
+            "language_probability": result.get("language_probability", 0.0),
+            "model_used": result.get("model_used", model),
+            "message": "한국어 자막 비디오가 성공적으로 생성되었습니다."
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"자막 생성 중 오류: {str(e)}")
+        print(f"❌ 한국어 자막 생성 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"한국어 자막 생성 중 오류: {str(e)}")
 
 @app.get("/download/{filename}")
 async def download_file(filename: str):

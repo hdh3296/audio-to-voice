@@ -34,9 +34,9 @@ export default function HomePage() {
   const [error, setError] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   
-  // 설정
-  const [model, setModel] = useState('small');
-  const [language, setLanguage] = useState('');
+  // 설정 (한국어 최적화)
+  const [model, setModel] = useState('large-v3');  // 한국어 정확도를 위해 large-v3 기본값
+  const [language, setLanguage] = useState('ko');   // 한국어 기본 설정
   const [task, setTask] = useState('transcribe');
   const [backgroundColor, setBackgroundColor] = useState('black');
 
@@ -159,10 +159,10 @@ export default function HomePage() {
         {/* 헤더 */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            🎵 Audio to Voice
+            🎵 Audio to Voice (한국어 최적화)
           </h1>
           <p className="text-lg text-gray-600">
-            오디오 파일을 자막이 있는 비디오로 변환하세요
+            한국어 오디오 파일을 정확한 자막이 있는 비디오로 변환하세요
           </p>
         </div>
 
@@ -273,24 +273,29 @@ export default function HomePage() {
                       onChange={(e) => setModel(e.target.value)}
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="tiny">Tiny (가장 빠름)</option>
-                      <option value="base">Base</option>
-                      <option value="small">Small (권장)</option>
-                      <option value="medium">Medium</option>
-                      <option value="large">Large (가장 정확)</option>
+                      <option value="tiny">Tiny (가장 빠름, 낮은 정확도)</option>
+                      <option value="base">Base (빠름, 보통 정확도)</option>
+                      <option value="small">Small (보통 속도, 좋은 정확도)</option>
+                      <option value="medium">Medium (느림, 높은 정확도)</option>
+                      <option value="large-v3">Large-v3 (가장 정확, 한국어 추천) ⭐</option>
+                      <option value="large-v3-turbo">Large-v3-turbo (빠르고 정확)</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      언어 (선택사항)
+                      언어 설정
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={language}
                       onChange={(e) => setLanguage(e.target.value)}
-                      placeholder="예: ko, en, ja..."
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    >
+                      <option value="ko">한국어 (Korean) 🇰🇷</option>
+                      <option value="en">영어 (English)</option>
+                      <option value="ja">일본어 (Japanese)</option>
+                      <option value="zh">중국어 (Chinese)</option>
+                      <option value="">자동 감지</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">

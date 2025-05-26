@@ -13,6 +13,7 @@ build/
 # Python 가상환경
 backend/venv/
 backend/__pycache__/
+backend/*/__pycache__/
 backend/*.pyc
 backend/*.pyo
 backend/*.pyd
@@ -25,6 +26,13 @@ uploads/*
 !uploads/.gitkeep
 outputs/*
 !outputs/.gitkeep
+
+# 테스트 파일
+debug_test.py
+test_audio.mp3
+*.mp3
+*.mp4
+*.wav
 
 # 환경변수
 .env
