@@ -4,3 +4,6 @@ python-multipart==0.0.6
 faster-whisper
 ffmpeg-python==0.2.0
 pydub==0.25.1
+openai>=1.0.0
+python-dotenv
+aiofiles

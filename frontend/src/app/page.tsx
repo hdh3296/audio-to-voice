@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Upload, Download, Play, FileAudio, Film, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Upload, Download, Play, FileAudio, Film, Loader2, CheckCircle, AlertCircle, Zap, Server } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000';
@@ -34,11 +34,28 @@ export default function HomePage() {
   const [error, setError] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   
-  // 설정 (한국어 최적화)
+  // 설정 (한국어 최적화 + API 모드 + GPT 후처리)
   const [model, setModel] = useState('large-v3');  // 한국어 정확도를 위해 large-v3 기본값
   const [language, setLanguage] = useState('ko');   // 한국어 기본 설정
   const [task, setTask] = useState('transcribe');
   const [backgroundColor, setBackgroundColor] = useState('black');
+  const [useApiMode, setUseApiMode] = useState(false);  // 🆕 API 모드 설정
+  const [useGptCorrection, setUseGptCorrection] = useState(false);  // 🆕 GPT 후처리 설정
+  const [apiStatus, setApiStatus] = useState<any>(null); // 🆕 API 상태
+
+  // 🆕 API 상태 확인
+  useEffect(() => {
+    const checkApiStatus = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/api-status`);
+        setApiStatus(response.data);
+      } catch (error) {
+        console.log('API 상태 확인 실패:', error);
+      }
+    };
+    
+    checkApiStatus();
+  }, []);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -122,6 +139,8 @@ export default function HomePage() {
             language: language || undefined,
             task,
             background_color: backgroundColor,
+            use_api: useApiMode,  // 🆕 API 모드 전달
+            use_gpt_correction: useGptCorrection,  // 🆕 GPT 후처리 전달
           },
         }
       );
@@ -159,10 +178,10 @@ export default function HomePage() {
         {/* 헤더 */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            🎵 Audio to Voice (한국어 최적화)
+            🎵 Audio to Voice (하이브리드 + GPT)
           </h1>
           <p className="text-lg text-gray-600">
-            한국어 오디오 파일을 정확한 자막이 있는 비디오로 변환하세요
+            한국어 오디오를 로컬/API + GPT 후처리로 최고 품질의 자막 비디오 변환
           </p>
         </div>
 
@@ -263,6 +282,121 @@ export default function HomePage() {
               {/* 설정 옵션 */}
               <div className="bg-gray-50 rounded-xl p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">생성 옵션</h3>
+                
+                {/* 🆕 처리 모드 선택 */}
+                <div className="mb-6 p-4 bg-white rounded-lg border">
+                  <h4 className="font-medium text-gray-900 mb-3">처리 모드 선택</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setUseApiMode(false)}
+                      className={`p-4 rounded-lg border-2 transition-all ${
+                        !useApiMode
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center mb-2">
+                        <Server className="w-6 h-6" />
+                      </div>
+                      <div className="text-sm font-medium">로컬 모드</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        • 무료 사용<br/>
+                        • 완전한 프라이버시<br/>
+                        • 보통 속도
+                      </div>
+                    </button>
+                    
+                    <button
+                      onClick={() => setUseApiMode(true)}
+                      disabled={!apiStatus?.openai_api_available}
+                      className={`p-4 rounded-lg border-2 transition-all ${
+                        useApiMode
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : apiStatus?.openai_api_available
+                          ? 'border-gray-200 hover:border-gray-300'
+                          : 'border-gray-200 opacity-50 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center mb-2">
+                        <Zap className="w-6 h-6" />
+                      </div>
+                      <div className="text-sm font-medium">
+                        API 모드 {!apiStatus?.openai_api_available && '(비활성화)'}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        • 초고속 처리 ⚡<br/>
+                        • 최신 모델<br/>
+                        • 유료 ($0.006/분)
+                      </div>
+                    </button>
+                  </div>
+                  
+                  {/* API 상태 표시 */}
+                  {apiStatus && (
+                    <div className={`mt-3 p-3 rounded-lg text-sm ${
+                      apiStatus.openai_api_available 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {apiStatus.openai_api_available ? (
+                        <>
+                          ✅ OpenAI API 사용 가능 (최대 {apiStatus.max_audio_length_minutes}분)
+                        </>
+                      ) : (
+                        <>
+                          ⚠️ OpenAI API 키 미설정 - 로컬 모드만 사용 가능
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 🆕 GPT 후처리 옵션 */}
+                <div className="mb-6 p-4 bg-white rounded-lg border">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium text-gray-900">🤖 GPT 후처리 (오타 교정)</h4>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useGptCorrection}
+                        onChange={(e) => setUseGptCorrection(e.target.checked)}
+                        disabled={!apiStatus?.gpt_postprocessing_available}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-50 peer-disabled:cursor-not-allowed"></div>
+                    </label>
+                  </div>
+                  
+                  <div className={`text-sm ${useGptCorrection ? 'text-green-700' : 'text-gray-600'}`}>
+                    {useGptCorrection ? '✅ 활성화됨' : '❌ 비활성화됨'}
+                    <div className="mt-2 text-xs text-gray-500">
+                      • 한국어 맞춤법 자동 교정<br/>
+                      • 띄어쓰기 및 문장 부호 최적화<br/>
+                      • 음성학적 오류 수정 (예: "되요"→"돼요")<br/>
+                      • 자연스러운 문체로 개선
+                    </div>
+                  </div>
+                  
+                  {/* GPT 상태 표시 */}
+                  {apiStatus && (
+                    <div className={`mt-3 p-3 rounded-lg text-sm ${
+                      apiStatus.gpt_postprocessing_available 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {apiStatus.gpt_postprocessing_available ? (
+                        <>
+                          ✅ GPT 후처리 사용 가능 (추가 비용: 약 $0.01/분)
+                        </>
+                      ) : (
+                        <>
+                          ⚠️ GPT 후처리 비활성화 - OpenAI API 키 설정 필요
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -336,12 +470,14 @@ export default function HomePage() {
                 {status === 'processing' ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    자막 비디오 생성 중...
+                    {useApiMode ? 'API로 고속 처리 중...' : '로컬 처리 중...'}
+                    {useGptCorrection && ' + GPT 교정 중...'}
                   </>
                 ) : (
                   <>
                     <Film className="w-5 h-5 mr-2" />
-                    자막 비디오 생성
+                    {useApiMode ? '⚡ API' : '🏠 로컬'} 
+                    {useGptCorrection ? ' + 🤖 GPT' : ''} 생성
                   </>
                 )}
               </button>
@@ -364,7 +500,14 @@ export default function HomePage() {
               {/* 결과 정보 */}
               <div className="bg-blue-50 rounded-xl p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">생성 결과</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                  <div>
+                    <span className="font-medium text-gray-700">처리 방식:</span>
+                    <span className="ml-2 text-gray-600">
+                      {(generateResult as any).processing_method === 'openai_api' ? '⚡ OpenAI API' : '🏠 로컬'}
+                      {(generateResult as any).processing_method?.includes('GPT교정') && ' + 🤖 GPT'}
+                    </span>
+                  </div>
                   <div>
                     <span className="font-medium text-gray-700">언어:</span>
                     <span className="ml-2 text-gray-600">{generateResult.language}</span>
@@ -373,7 +516,28 @@ export default function HomePage() {
                     <span className="font-medium text-gray-700">자막 수:</span>
                     <span className="ml-2 text-gray-600">{generateResult.segments_count}개</span>
                   </div>
+                  {(generateResult as any).gpt_correction_applied && (
+                    <div>
+                      <span className="font-medium text-gray-700">GPT 교정:</span>
+                      <span className="ml-2 text-green-600">
+                        ✅ {(generateResult as any).total_corrections || 0}개 수정됨
+                      </span>
+                    </div>
+                  )}
                 </div>
+                
+                {/* GPT 교정 결과 표시 */}
+                {(generateResult as any).gpt_correction_applied && (
+                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center text-green-700 text-sm">
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      <span className="font-medium">
+                        GPT 후처리 완료: {(generateResult as any).total_corrections || 0}개 오타/맞춤법 교정됨
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="mt-4">
                   <span className="font-medium text-gray-700">전사 텍스트:</span>
                   <p className="mt-2 text-gray-600 bg-white p-3 rounded-lg border max-h-32 overflow-y-auto">
@@ -417,7 +581,8 @@ export default function HomePage() {
 
         {/* 푸터 */}
         <div className="text-center mt-8 text-gray-500">
-          <p>Powered by OpenAI Whisper & FFmpeg</p>
+          <p>Powered by OpenAI Whisper API + Faster-Whisper + GPT-4 & FFmpeg</p>
+          <p className="text-sm mt-1">🚀 하이브리드 모드 + 🤖 GPT 후처리로 최고 품질의 한국어 자막 제공</p>
         </div>
       </div>
     </div>
