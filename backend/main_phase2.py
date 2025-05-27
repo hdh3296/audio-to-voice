@@ -143,6 +143,102 @@ def generate_srt(segments, video_resolution: str = "1080p"):
     return srt_content
 
 
+async def gpt_smart_line_breaks(text: str, max_line_length: int, max_lines: int = 2) -> str:
+    """
+    🤖 GPT 기반 의미 단위 스마트 분할
+    - 자연스러운 의미 단위로 분할
+    - 한국어 문법 고려 (조사, 어미 등)  
+    - 균형잡힌 줄 길이
+    """
+    if not api_available:
+        return text
+    
+    try:
+        from openai import AsyncOpenAI
+        
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return text
+            
+        client = AsyncOpenAI(api_key=api_key)
+        
+        prompt = f"""다음 한국어 텍스트를 자연스럽고 의미있는 단위로 {max_lines}줄로 나누어 주세요.
+
+🎯 분할 조건:
+- 각 줄은 최대 {max_line_length}자 이하
+- 의미가 완결되는 지점에서 분할
+- 너무 짧은 줄(3글자 이하) 방지
+- 조사나 어미가 혼자 남지 않도록 주의
+- "~을", "~를", "~에 대한", "~을 위하여" 등은 분할하지 말 것
+- 균형잡힌 줄 길이로 조정
+
+📝 텍스트: "{text}"
+
+✅ 결과: 줄바꿈으로 구분된 텍스트만 반환 (설명 없이)"""
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=1000
+        )
+        
+        result = response.choices[0].message.content.strip()
+        
+        # 결과 검증: 줄 수 및 길이 체크
+        lines = result.split('\n')
+        if len(lines) <= max_lines and all(len(line) <= max_line_length + 5 for line in lines):
+            print(f"🤖 GPT 스마트 분할 성공: {len(lines)}줄")
+            for i, line in enumerate(lines, 1):
+                print(f"   {i}줄: '{line}' (길이: {len(line)}자)")
+            return result
+        else:
+            print(f"⚠️ GPT 결과 검증 실패 - 원본 사용")
+            return text
+            
+    except Exception as e:
+        print(f"❌ GPT 스마트 분할 오류: {str(e)} - 원본 사용")
+        return text
+
+
+def needs_smart_improvement(text: str, formatted_result: str, max_line_length: int) -> bool:
+    """
+    🔍 GPT 스마트 분할이 필요한지 판단
+    - 너무 짧은 줄 (3글자 이하)
+    - 불균형한 줄 길이 차이
+    - 부자연스러운 분할점 ("내용을" 등)
+    """
+    lines = formatted_result.split('\n')
+    
+    # 1. 너무 짧은 줄 검사
+    for line in lines:
+        if len(line.strip()) <= 3 and len(line.strip()) > 0:
+            print(f"🔍 개선 필요: 너무 짧은 줄 감지 - '{line.strip()}'")
+            return True
+    
+    # 2. 줄 길이 불균형 검사 (2줄인 경우)
+    if len(lines) == 2:
+        line1_len = len(lines[0])
+        line2_len = len(lines[1])
+        if line1_len > 0 and line2_len > 0:
+            length_ratio = abs(line1_len - line2_len) / max(line1_len, line2_len)
+            if length_ratio > 0.7:  # 70% 이상 차이
+                print(f"🔍 개선 필요: 불균형한 줄 길이 - {line1_len}자 vs {line2_len}자")
+                return True
+    
+    # 3. 부자연스러운 분할점 검사
+    problem_patterns = [
+        "내용을\n", "것을\n", "을\n", "를\n", "에\n", "이\n", "가\n"
+    ]
+    
+    for pattern in problem_patterns:
+        if pattern in formatted_result:
+            print(f"🔍 개선 필요: 부자연스러운 분할점 감지 - '{pattern.strip()}'")
+            return True
+    
+    return False
+
+
 def apply_word_based_line_breaks(text: str, max_line_length: int) -> str:
     """
     🔤 A방식: 단어 단위 줄바꿈 적용 (완전 개선 버전 v2.0)
@@ -748,6 +844,86 @@ async def generate_subtitles_advanced(
         raise HTTPException(status_code=500, detail=f"품질 분석 중 오류: {str(e)}")
 
 
+@app.get("/test-smart-line-breaks")
+async def test_smart_line_breaks():
+    """🤖 GPT 스마트 줄바꿈 기능 테스트"""
+    
+    # 문제가 있는 테스트 케이스들
+    problem_cases = [
+        {
+            "name": "핵심 문제: 내용을이 혼자 남는 경우",
+            "text": "성경을 잘 알지 못하는 분들이나 예수 그리스도에 대한 믿음의 주요 내용을 더 잘 알고 싶은 분들을 위하여 성경의 줄거리와 내용을 읽기 쉽게 정리하였습니다",
+            "max_length": 35,
+            "expected_problem": "내용을이 혼자 한 줄에 남을 가능성"
+        },
+        {
+            "name": "불균형한 줄 길이",
+            "text": "이것은 매우 긴 텍스트로서 여러 줄로 나누어져야 하는 내용입니다만 균형을 맞추기 어렵습니다",
+            "max_length": 30,
+            "expected_problem": "첫 줄은 길고 둘째 줄은 짧을 가능성"
+        },
+        {
+            "name": "조사 분리 위험",
+            "text": "컨사이스 바이블은 성경 공부에 관심이 있는 분들을 위해 준비된 것을 알려드립니다",
+            "max_length": 25,
+            "expected_problem": "조사가 분리될 위험"
+        }
+    ]
+    
+    results = []
+    
+    for case in problem_cases:
+        print(f"\n🧪 테스트: {case['name']}")
+        print(f"📝 원본: {case['text']}")
+        print(f"📏 최대 길이: {case['max_length']}자")
+        
+        # A방식 (기존) 적용
+        basic_result = apply_word_based_line_breaks(case['text'], case['max_length'])
+        
+        # 문제점 감지
+        needs_improvement = needs_smart_improvement(case['text'], basic_result, case['max_length'])
+        
+        # GPT 스마트 분할 적용 (필요시)
+        smart_result = basic_result
+        if needs_improvement:
+            smart_result = await gpt_smart_line_breaks(case['text'], case['max_length'])
+        
+        basic_lines = basic_result.split('\n')
+        smart_lines = smart_result.split('\n')
+        
+        result = {
+            "test_name": case['name'],
+            "original_text": case['text'],
+            "expected_problem": case['expected_problem'],
+            "max_length": case['max_length'],
+            "basic_result": {
+                "text": basic_result,
+                "lines": basic_lines,
+                "line_lengths": [len(line) for line in basic_lines],
+                "needs_improvement": needs_improvement
+            },
+            "smart_result": {
+                "text": smart_result,
+                "lines": smart_lines,
+                "line_lengths": [len(line) for line in smart_lines],
+                "improved": smart_result != basic_result
+            },
+            "improvement_applied": smart_result != basic_result
+        }
+        
+        results.append(result)
+    
+    return {
+        "message": "🤖 GPT 스마트 줄바꿈 테스트 완료",
+        "test_results": results,
+        "summary": {
+            "total_cases": len(problem_cases),
+            "improved_cases": sum(1 for r in results if r['improvement_applied']),
+            "gpt_available": api_available
+        }
+    }
+
+
 @app.get("/test-line-breaks")
 async def test_line_breaks():
     """단어 단위 줄바꿈 기능 테스트"""
@@ -810,7 +986,19 @@ async def test_line_breaks():
             "4k": "70자 이하"
         }
     }
+@app.get("/download/{filename}")
+async def download_file(filename: str):
     """파일 다운로드"""
+    file_path = OUTPUTS_DIR / filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/octet-stream"
+    )
     file_path = OUTPUTS_DIR / filename
     
     if not file_path.exists():
