@@ -114,26 +114,28 @@ def init_phase2_systems():
 
 
 def generate_ass(segments, video_resolution: str = "1080p"):
-    """ASS 자막 생성 - 한 줄 자막 완전 제어"""
+    """ASS 자막 생성 - 한 줄 자막 완전 제어 + 좌우 여백"""
     
-    # 해상도별 폰트 크기 설정
-    font_sizes = {
-        "720p": 18,
-        "1080p": 22,  
-        "1440p": 28,
-        "4k": 36
+    # 해상도별 폰트 크기 및 여백 설정
+    resolution_configs = {
+        "720p": {"font_size": 18, "margin_lr": 40},    # 좌우 40px 여백
+        "1080p": {"font_size": 22, "margin_lr": 60},   # 좌우 60px 여백  
+        "1440p": {"font_size": 28, "margin_lr": 80},   # 좌우 80px 여백
+        "4k": {"font_size": 36, "margin_lr": 120}      # 좌우 120px 여백
     }
     
-    font_size = font_sizes.get(video_resolution, 22)
+    config = resolution_configs.get(video_resolution, resolution_configs["1080p"])
+    font_size = config["font_size"]
+    margin_lr = config["margin_lr"]
     
-    # ASS 헤더 (완전한 줄바꿈 제어)
+    # ASS 헤더 (좌우 여백 포함한 완전한 줄바꿈 제어)
     ass_content = f"""[Script Info]
-Title: Single Line Subtitles
+Title: Single Line Subtitles with Margins
 ScriptType: v4.00+
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,{font_size},&Hffffff,&Hffffff,&H000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,0,0,30,1
+Style: Default,Arial,{font_size},&Hffffff,&Hffffff,&H000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,{margin_lr},{margin_lr},30,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -316,7 +318,7 @@ def create_video_with_subtitles(audio_path: str, ass_content: str, output_path: 
             ass_file.write(ass_content)
             ass_path = ass_file.name
         
-        print(f"🎬 한 줄 자막 모드: {config['description']} ({config['size']}) - ASS 자막 사용, 줄바꿈 완전 비활성화")
+        print(f"🎬 한 줄 자막 + 좌우 여백: {config['description']} ({config['size']}) - ASS 자막 사용, 줄바꿈 완전 비활성화")
         
         # FFmpeg 명령어 (ASS 자막 사용)
         cmd = [
