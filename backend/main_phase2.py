@@ -114,28 +114,29 @@ def init_phase2_systems():
 
 
 def generate_ass(segments, video_resolution: str = "1080p"):
-    """ASS 자막 생성 - 한 줄 자막 완전 제어 + 좌우 여백"""
+    """ASS 자막 생성 - 화면 중앙 위치 + 한 줄 자막 완전 제어 + 좌우 여백"""
     
-    # 해상도별 폰트 크기 및 여백 설정
+    # 해상도별 폰트 크기, 여백, 중앙 위치 설정
     resolution_configs = {
-        "720p": {"font_size": 18, "margin_lr": 40},    # 좌우 40px 여백
-        "1080p": {"font_size": 22, "margin_lr": 60},   # 좌우 60px 여백  
-        "1440p": {"font_size": 28, "margin_lr": 80},   # 좌우 80px 여백
-        "4k": {"font_size": 36, "margin_lr": 120}      # 좌우 120px 여백
+        "720p": {"font_size": 18, "margin_lr": 40, "center_v": 360},    # 720p 중앙: 360px
+        "1080p": {"font_size": 22, "margin_lr": 60, "center_v": 540},   # 1080p 중앙: 540px  
+        "1440p": {"font_size": 28, "margin_lr": 80, "center_v": 720},   # 1440p 중앙: 720px
+        "4k": {"font_size": 36, "margin_lr": 120, "center_v": 1080}     # 4K 중앙: 1080px
     }
     
     config = resolution_configs.get(video_resolution, resolution_configs["1080p"])
     font_size = config["font_size"]
     margin_lr = config["margin_lr"]
+    center_v = config["center_v"]
     
-    # ASS 헤더 (좌우 여백 포함한 완전한 줄바꿈 제어)
+    # ASS 헤더 (화면 중앙 위치 + 좌우 여백 포함한 완전한 줄바꿈 제어)
     ass_content = f"""[Script Info]
-Title: Single Line Subtitles with Margins
+Title: Center Position Single Line Subtitles
 ScriptType: v4.00+
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,{font_size},&Hffffff,&Hffffff,&H000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,{margin_lr},{margin_lr},30,1
+Style: Default,Arial,{font_size},&Hffffff,&Hffffff,&H000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,5,{margin_lr},{margin_lr},{center_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -299,7 +300,7 @@ def get_audio_duration(audio_path: str) -> float:
 
 
 def create_video_with_subtitles(audio_path: str, ass_content: str, output_path: str, background_color: str = "black", video_resolution: str = "1080p"):
-    """비디오 생성 - ASS 자막을 사용한 한 줄 자막 완전 제어"""
+    """비디오 생성 - ASS 자막을 사용한 화면 중앙 한 줄 자막 완전 제어"""
     try:
         duration = get_audio_duration(audio_path)
         
@@ -318,7 +319,7 @@ def create_video_with_subtitles(audio_path: str, ass_content: str, output_path: 
             ass_file.write(ass_content)
             ass_path = ass_file.name
         
-        print(f"🎬 한 줄 자막 + 좌우 여백: {config['description']} ({config['size']}) - ASS 자막 사용, 줄바꿈 완전 비활성화")
+        print(f"🎬 화면 중앙 한 줄 자막 + 좌우 여백: {config['description']} ({config['size']}) - ASS 자막 사용, 줄바꿈 완전 비활성화")
         
         # FFmpeg 명령어 (ASS 자막 사용)
         cmd = [
