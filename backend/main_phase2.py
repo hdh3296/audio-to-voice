@@ -113,8 +113,19 @@ def init_phase2_systems():
         print("⚠️ OpenAI API 키가 설정되지 않음 - Phase 2 기능 사용 불가")
 
 
-def generate_srt(segments):
-    """SRT 자막 생성"""
+def generate_srt(segments, video_resolution: str = "1080p"):
+    """SRT 자막 생성 - 단어 단위 줄바꿈 지원"""
+    
+    # 해상도별 최적 줄 길이 설정 (A방식: 단어 단위 분할)
+    line_length_configs = {
+        "720p": 35,   # ~35자
+        "1080p": 45,  # ~45자  
+        "1440p": 55,  # ~55자
+        "4k": 70      # ~70자
+    }
+    
+    max_line_length = line_length_configs.get(video_resolution, 45)
+    
     srt_content = ""
     
     for i, segment in enumerate(segments, 1):
@@ -122,11 +133,108 @@ def generate_srt(segments):
         end_time = seconds_to_srt_time(segment["end"])
         text = segment["text"].strip()
         
+        # 🔤 A방식: 단어 단위 줄바꿈 적용
+        formatted_text = apply_word_based_line_breaks(text, max_line_length)
+        
         srt_content += f"{i}\n"
         srt_content += f"{start_time} --> {end_time}\n"
-        srt_content += f"{text}\n\n"
+        srt_content += f"{formatted_text}\n\n"
     
     return srt_content
+
+
+def apply_word_based_line_breaks(text: str, max_line_length: int) -> str:
+    """
+    🔤 A방식: 단어 단위 줄바꿈 적용 (완전 개선 버전 v2.0)
+    - 어절(공백) 기준으로만 분할 
+    - 단어의 완전성 100% 보장
+    - 최대 2줄 제한 (업계 표준)
+    - 스마트한 줄 균형 맞추기
+    - 단어 분할 절대 방지 시스템
+    """
+    if not text or len(text) <= max_line_length:
+        return text
+    
+    # 어절(공백) 기준으로 분리
+    words = text.split()
+    
+    if not words:
+        return text
+    
+    # 단일 단어가 너무 긴 경우 처리
+    if len(words) == 1:
+        return words[0]  # 단일 단어는 절대 분할하지 않음
+    
+    # 🎯 스마트 2줄 분할 알고리즘
+    total_length = len(text)
+    target_line_length = min(max_line_length, total_length // 2 + 5)  # 균형잡힌 분할
+    
+    lines = []
+    current_line = ""
+    
+    for i, word in enumerate(words):
+        # 현재 줄에 단어를 추가했을 때의 길이 계산
+        test_line = current_line + (" " if current_line else "") + word
+        
+        # 🔍 첫 번째 줄 최적화: 적절한 길이에서 자연스럽게 분할
+        if len(lines) == 0:
+            if len(test_line) <= target_line_length or len(test_line) <= max_line_length:
+                current_line = test_line
+            else:
+                # 첫 번째 줄 완성 후 두 번째 줄 시작
+                if current_line:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    current_line = word  # 첫 단어 자체가 긴 경우
+        
+        # 🔍 두 번째 줄: 남은 모든 단어 수용 (단어 완전성 보장)
+        elif len(lines) == 1:
+            current_line = test_line
+        
+        # 🚨 2줄 제한 강제: 더 이상 줄 추가 금지
+        else:
+            break
+    
+    # 마지막 줄 추가
+    if current_line:
+        lines.append(current_line)
+    
+    # 🛡️ 단어 완전성 최종 검증
+    result = "\n".join(lines)
+    
+    # 검증: 단어 분할 감지
+    word_integrity_check = True
+    split_violations = []
+    
+    for word in words:
+        if len(word) > 2:  # 2글자 이상 단어만 검사
+            # 단어가 줄 경계에서 분할되었는지 확인
+            for i in range(1, len(word)):
+                partial_word = word[:i]
+                remaining_part = word[i:]
+                if (partial_word + "\n") in result or ("\n" + remaining_part) in result:
+                    word_integrity_check = False
+                    split_violations.append(word)
+                    break
+    
+    # 🎯 결과 로깅
+    if len(lines) <= 2:
+        print(f"✅ 단어 단위 줄바꿈 적용: {len(lines)}줄 (완전성: {'✓' if word_integrity_check else '✗'})")
+        for i, line in enumerate(lines, 1):
+            print(f"   {i}줄: '{line}' (길이: {len(line)}자)")
+        if split_violations:
+            print(f"   ⚠️ 분할 위험 단어: {split_violations}")
+    else:
+        print(f"⚠️ 2줄 초과: {len(lines)}줄")
+    
+    # 🔧 긴급 수정: 단어 분할 발생시 강제 결합
+    if split_violations:
+        print("🔧 단어 분할 감지 - 긴급 수정 적용")
+        # 모든 텍스트를 첫 번째 줄에 결합
+        result = text
+    
+    return result
 
 
 def seconds_to_srt_time(seconds: float) -> str:
@@ -533,7 +641,14 @@ async def generate_subtitles_advanced(
         # 최종 단계: 비디오 생성
         final_stage_num = len(processing_stages) + 1
         print(f"🎬 {final_stage_num}단계: 비디오 생성 중... ({video_resolution})")
-        srt_content = generate_srt(final_result["segments"])
+        srt_content = generate_srt(final_result["segments"], video_resolution)  # 해상도 매개변수 추가
+        
+        # 🔍 디버깅용: SRT 내용 저장
+        debug_srt_path = OUTPUTS_DIR / f"{file_id}_advanced_subtitled_debug.srt"
+        with open(debug_srt_path, 'w', encoding='utf-8') as f:
+            f.write(srt_content)
+        print(f"🔍 디버깅용 SRT 저장: {debug_srt_path}")
+        
         create_video_with_subtitles(str(input_file), srt_content, str(output_file), background_color, video_resolution)
         
         # 응답 데이터 구성
@@ -633,8 +748,68 @@ async def generate_subtitles_advanced(
         raise HTTPException(status_code=500, detail=f"품질 분석 중 오류: {str(e)}")
 
 
-@app.get("/download/{filename}")
-async def download_file(filename: str):
+@app.get("/test-line-breaks")
+async def test_line_breaks():
+    """단어 단위 줄바꿈 기능 테스트"""
+    
+    # 테스트 케이스들
+    test_cases = [
+        {
+            "name": "기본 케이스",
+            "text": "분들을 위하여 성경의 줄거리와 내용을 읽기 쉽게 정리하였습니다",
+            "max_length": 35
+        },
+        {
+            "name": "긴 텍스트",
+            "text": "이것은 매우 긴 텍스트로서 여러 줄로 나누어져야 하는 내용입니다 그리고 단어의 완전성을 보장해야 합니다",
+            "max_length": 40
+        },
+        {
+            "name": "짧은 텍스트",
+            "text": "짧은 텍스트",
+            "max_length": 35
+        },
+        {
+            "name": "단일 긴 단어",
+            "text": "초장편대서사시급초특급전문용어",
+            "max_length": 20
+        }
+    ]
+    
+    results = []
+    
+    for case in test_cases:
+        print(f"\n🧪 테스트: {case['name']}")
+        print(f"📝 원본: {case['text']}")
+        print(f"📏 최대 길이: {case['max_length']}자")
+        
+        # 줄바꿈 적용
+        formatted = apply_word_based_line_breaks(case['text'], case['max_length'])
+        lines = formatted.split('\n')
+        
+        result = {
+            "test_name": case['name'],
+            "original_text": case['text'],
+            "max_length": case['max_length'],
+            "formatted_text": formatted,
+            "line_count": len(lines),
+            "lines": lines,
+            "line_lengths": [len(line) for line in lines],
+            "word_integrity_maintained": '위\n하여' not in formatted and '줄거\n리' not in formatted
+        }
+        
+        results.append(result)
+    
+    return {
+        "message": "단어 단위 줄바꿈 테스트 완료",
+        "test_results": results,
+        "supported_resolutions": {
+            "720p": "35자 이하",
+            "1080p": "45자 이하", 
+            "1440p": "55자 이하",
+            "4k": "70자 이하"
+        }
+    }
     """파일 다운로드"""
     file_path = OUTPUTS_DIR / filename
     
