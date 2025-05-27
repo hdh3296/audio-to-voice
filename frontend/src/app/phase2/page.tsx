@@ -32,6 +32,13 @@ interface ModelInfo {
   recommended_for?: boolean;
 }
 
+interface VideoResolution {
+  size: string;
+  description: string;
+  recommended_for: string;
+  default?: boolean;
+}
+
 interface QualityMetrics {
   overall_score: number;
   confidence_score: number;
@@ -59,12 +66,14 @@ const Phase2AudioProcessor = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileId, setFileId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('whisper-1-optimized');
+  const [videoResolution, setVideoResolution] = useState<string>('1080p');  // 🆕 해상도 상태
   const [enableGptPostprocessing, setEnableGptPostprocessing] = useState<boolean>(true);  // 🆕 GPT 후처리 기본값을 true로 변경
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<Record<string, ModelInfo>>({});
+  const [availableResolutions, setAvailableResolutions] = useState<Record<string, VideoResolution>>({});  // 🆕 해상도 상태
   const [processingMode, setProcessingMode] = useState<string>('advanced');
   const [qualityAnalysis, setQualityAnalysis] = useState<QualityMetrics | null>(null);
   const [streamingProgress, setStreamingProgress] = useState<StreamingProgress | null>(null);
@@ -78,6 +87,7 @@ const Phase2AudioProcessor = () => {
   // 컴포넌트 마운트시 모델 정보 로드
   useEffect(() => {
     loadAvailableModels();
+    loadAvailableResolutions();  // 🆕 해상도 정보 로드
     return () => {
       if (websocket) {
         websocket.close();
@@ -92,6 +102,16 @@ const Phase2AudioProcessor = () => {
       setAvailableModels(data.available_models);
     } catch (err) {
       console.error('모델 정보 로드 실패:', err);
+    }
+  };
+
+  const loadAvailableResolutions = async () => {  // 🆕 해상도 정보 로드 함수
+    try {
+      const response = await fetch(`${API_BASE}/video-resolutions`);
+      const data = await response.json();
+      setAvailableResolutions(data.available_resolutions);
+    } catch (err) {
+      console.error('해상도 정보 로드 실패:', err);
     }
   };
 
@@ -157,6 +177,7 @@ const Phase2AudioProcessor = () => {
         model: selectedModel,
         language: 'ko',
         background_color: 'black',
+        video_resolution: videoResolution,  // 🆕 해상도 매개변수 추가
         enable_quality_analysis: 'true',
         enable_auto_reprocessing: 'true',
         enable_gpt_postprocessing: enableGptPostprocessing.toString(),  // 🆕 GPT 후처리 옵션 전달
@@ -317,7 +338,7 @@ const Phase2AudioProcessor = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">  {/* 3열 그리드로 변경 */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">AI 모델 선택</label>
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
@@ -367,6 +388,34 @@ const Phase2AudioProcessor = () => {
                     </SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* 🆕 비디오 해상도 선택 */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">비디오 해상도</label>
+                <Select value={videoResolution} onValueChange={setVideoResolution}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(availableResolutions).map(([key, info]) => (
+                      <SelectItem key={key} value={key}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{info.description} ({info.size})</span>
+                          {info.default && (
+                            <Badge variant="outline" className="ml-2">기본값</Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {availableResolutions[videoResolution] && (
+                  <div className="text-xs text-gray-500 space-y-1">
+                    <p>🎬 크기: {availableResolutions[videoResolution].size}</p>
+                    <p>📺 용도: {availableResolutions[videoResolution].recommended_for}</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -505,7 +554,8 @@ const Phase2AudioProcessor = () => {
                 <p className="font-medium text-green-800">자막 비디오가 생성되었습니다!</p>
                 <p className="text-sm text-green-600">
                   세그먼트: {result.segments_count}개 • 
-                  모델: {result.model_used || selectedModel}
+                  모델: {result.model_used || selectedModel} •
+                  해상도: {result.video_resolution || videoResolution}  {/* 🆕 해상도 표시 */}
                   {result.reprocessed && (
                     <Badge variant="outline" className="ml-2">재처리됨</Badge>
                   )}

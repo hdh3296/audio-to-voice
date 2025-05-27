@@ -150,29 +150,73 @@ def get_audio_duration(audio_path: str) -> float:
         return 60.0
 
 
-def create_video_with_subtitles(audio_path: str, srt_content: str, output_path: str, background_color: str = "black"):
-    """비디오 생성"""
+def create_video_with_subtitles(audio_path: str, srt_content: str, output_path: str, background_color: str = "black", video_resolution: str = "1080p"):
+    """비디오 생성 - 유튜브 최적화 다중 해상도 지원"""
     try:
         duration = get_audio_duration(audio_path)
+        
+        # 🎬 해상도별 설정 (자막 공간 최대 활용)
+        resolution_configs = {
+            "720p": {
+                "size": "1280x720",
+                "font_size": 18,        
+                "outline": 2,           
+                "margin": 30,           
+                "margin_lr": 10,        # 30 → 10 (최소한의 여백)
+                "description": "HD 720p"
+            },
+            "1080p": {
+                "size": "1920x1080", 
+                "font_size": 22,        
+                "outline": 2,           
+                "margin": 45,           
+                "margin_lr": 15,        # 40 → 15 (최소한의 여백)
+                "description": "Full HD 1080p (권장)"
+            },
+            "1440p": {
+                "size": "2560x1440",
+                "font_size": 28,        
+                "outline": 2,           
+                "margin": 60,           
+                "margin_lr": 20,        # 60 → 20 (최소한의 여백)
+                "description": "2K QHD"
+            },
+            "4k": {
+                "size": "3840x2160",
+                "font_size": 36,        
+                "outline": 3,           
+                "margin": 80,           
+                "margin_lr": 30,        # 80 → 30 (최소한의 여백)
+                "description": "4K UHD"
+            }
+        }
+        
+        # 선택된 해상도 설정 가져오기
+        config = resolution_configs.get(video_resolution, resolution_configs["1080p"])
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as srt_file:
             srt_file.write(srt_content)
             srt_path = srt_file.name
         
+        # 동적 자막 스타일 생성 (최대 폭 제한으로 자동 여백)
         font_style = (
-            'FontSize=28,'
-            'PrimaryColour=&Hffffff,'
-            'OutlineColour=&H000000,'
-            'Outline=3,'
-            'Shadow=1,'
-            'Alignment=2,'
-            'MarginV=50'
+            f'FontSize={config["font_size"]},'
+            'PrimaryColour=&Hffffff,'   # 흰색 텍스트
+            'OutlineColour=&H000000,'   # 검은색 아웃라인
+            f'Outline={config["outline"]},'
+            'Shadow=1,'                 # 그림자 효과
+            'Alignment=2,'              # 하단 중앙 정렬
+            f'MarginV={config["margin"]},'  # 하단 여백만 유지
+            f'MarginL={config["margin_lr"]},'  # 좌우 여백으로 최대 폭 제한
+            f'MarginR={config["margin_lr"]}'   # 자막이 이 안에서만 표시됨
         )
+        
+        print(f"🎬 비디오 생성: {config['description']} ({config['size']}) - 자막: {config['font_size']}px, 최대폭: {config['margin_lr']}px 여백")
         
         cmd = [
             'ffmpeg',
             '-f', 'lavfi',
-            '-i', f'color=c={background_color}:s=1280x720:d={duration}',
+            '-i', f'color=c={background_color}:s={config["size"]}:d={duration}',
             '-i', audio_path,
             '-vf', f'subtitles={srt_path}:force_style=\'{font_style}\'',
             '-c:v', 'libx264',
@@ -262,6 +306,38 @@ async def api_status():
     }
 
 
+@app.get("/video-resolutions")
+async def get_video_resolutions():
+    """지원하는 비디오 해상도 목록"""
+    return {
+        "available_resolutions": {
+            "720p": {
+                "size": "1280x720",
+                "description": "HD 720p",
+                "recommended_for": "일반 용도"
+            },
+            "1080p": {
+                "size": "1920x1080", 
+                "description": "Full HD 1080p",
+                "recommended_for": "유튜브 권장 (기본값)",
+                "default": True
+            },
+            "1440p": {
+                "size": "2560x1440",
+                "description": "2K QHD",
+                "recommended_for": "고화질 선호"
+            },
+            "4k": {
+                "size": "3840x2160",
+                "description": "4K UHD",
+                "recommended_for": "최고 화질 (용량 큼)"
+            }
+        },
+        "default_resolution": "1080p",
+        "youtube_optimized": ["1080p", "1440p", "4k"]
+    }
+
+
 @app.get("/models")
 async def get_available_models():
     """사용 가능한 모델 목록"""
@@ -327,6 +403,7 @@ async def generate_subtitles_advanced(
     model: str = "whisper-1-optimized",
     language: str = "ko",
     background_color: str = "black",
+    video_resolution: str = "1080p",  # 🆕 해상도 선택 옵션
     enable_quality_analysis: bool = True,
     enable_auto_reprocessing: bool = True,
     enable_gpt_postprocessing: bool = True,  # 🆕 GPT 후처리 기본값을 True로 변경 (테스트용)
@@ -455,9 +532,9 @@ async def generate_subtitles_advanced(
         
         # 최종 단계: 비디오 생성
         final_stage_num = len(processing_stages) + 1
-        print(f"🎬 {final_stage_num}단계: 비디오 생성 중...")
+        print(f"🎬 {final_stage_num}단계: 비디오 생성 중... ({video_resolution})")
         srt_content = generate_srt(final_result["segments"])
-        create_video_with_subtitles(str(input_file), srt_content, str(output_file), background_color)
+        create_video_with_subtitles(str(input_file), srt_content, str(output_file), background_color, video_resolution)
         
         # 응답 데이터 구성
         response_data = {
@@ -474,8 +551,9 @@ async def generate_subtitles_advanced(
             "reprocess_attempts": final_result.get("total_reprocess_attempts", 0),
             "quality_metrics": final_result.get("quality_metrics"),
             "processing_time": final_result.get("processing_time", 0),
+            "video_resolution": video_resolution,  # 🆕 사용된 해상도 정보
             "gpt_postprocessing_enabled": enable_gpt_postprocessing,
-            "message": f"Phase 2 고급 처리로 한국어 자막 비디오가 성공적으로 생성되었습니다."
+            "message": f"Phase 2 고급 처리로 한국어 자막 비디오가 성공적으로 생성되었습니다. ({video_resolution})"
         }
         
         # GPT 후처리 결과 추가
