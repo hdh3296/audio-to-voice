@@ -113,34 +113,53 @@ def init_phase2_systems():
         print("⚠️ OpenAI API 키가 설정되지 않음 - Phase 2 기능 사용 불가")
 
 
-def generate_srt(segments, video_resolution: str = "1080p"):
-    """SRT 자막 생성 - 단어 단위 줄바꿈 지원"""
+def generate_ass(segments, video_resolution: str = "1080p"):
+    """ASS 자막 생성 - 한 줄 자막 완전 제어"""
     
-    # 해상도별 최적 줄 길이 설정 (A방식: 단어 단위 분할)
-    line_length_configs = {
-        "720p": 35,   # ~35자
-        "1080p": 45,  # ~45자  
-        "1440p": 55,  # ~55자
-        "4k": 70      # ~70자
+    # 해상도별 폰트 크기 설정
+    font_sizes = {
+        "720p": 18,
+        "1080p": 22,  
+        "1440p": 28,
+        "4k": 36
     }
     
-    max_line_length = line_length_configs.get(video_resolution, 45)
+    font_size = font_sizes.get(video_resolution, 22)
     
-    srt_content = ""
+    # ASS 헤더 (완전한 줄바꿈 제어)
+    ass_content = f"""[Script Info]
+Title: Single Line Subtitles
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,{font_size},&Hffffff,&Hffffff,&H000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,0,0,30,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
     
-    for i, segment in enumerate(segments, 1):
-        start_time = seconds_to_srt_time(segment["start"])
-        end_time = seconds_to_srt_time(segment["end"])
+    for i, segment in enumerate(segments):
+        start_time = seconds_to_ass_time(segment["start"])
+        end_time = seconds_to_ass_time(segment["end"])
         text = segment["text"].strip()
         
-        # 🔤 A방식: 단어 단위 줄바꿈 적용
-        formatted_text = apply_word_based_line_breaks(text, max_line_length)
+        # 🔥 한 줄 자막: \\N (강제 줄바꿈) 제거, 모든 텍스트를 한 줄로
+        text = text.replace('\\N', ' ').replace('\n', ' ')
         
-        srt_content += f"{i}\n"
-        srt_content += f"{start_time} --> {end_time}\n"
-        srt_content += f"{formatted_text}\n\n"
+        ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
     
-    return srt_content
+    return ass_content
+
+
+def seconds_to_ass_time(seconds: float) -> str:
+    """초를 ASS 시간 형식으로 변환 (H:MM:SS.CC)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    centisecs = int((seconds % 1) * 100)
+    
+    return f"{hours}:{minutes:02d}:{secs:02d}.{centisecs:02d}"
 
 
 async def gpt_smart_line_breaks(text: str, max_line_length: int, max_lines: int = 2) -> str:
@@ -241,96 +260,19 @@ def needs_smart_improvement(text: str, formatted_result: str, max_line_length: i
 
 def apply_word_based_line_breaks(text: str, max_line_length: int) -> str:
     """
-    🔤 A방식: 단어 단위 줄바꿈 적용 (완전 개선 버전 v2.0)
-    - 어절(공백) 기준으로만 분할 
-    - 단어의 완전성 100% 보장
-    - 최대 2줄 제한 (업계 표준)
-    - 스마트한 줄 균형 맞추기
-    - 단어 분할 절대 방지 시스템
+    📝 한 줄 자막 처리 (줄바꿈 비활성화)
+    - 모든 자막을 한 줄로 표시
+    - 줄바꿈 처리 완전 비활성화
+    - 원본 텍스트 그대로 유지
     """
-    if not text or len(text) <= max_line_length:
+    if not text:
         return text
     
-    # 어절(공백) 기준으로 분리
-    words = text.split()
+    # 🔥 한 줄 자막 모드: 줄바꿈 완전 비활성화
+    print(f"📝 한 줄 자막 모드: '{text}' (길이: {len(text)}자)")
     
-    if not words:
-        return text
-    
-    # 단일 단어가 너무 긴 경우 처리
-    if len(words) == 1:
-        return words[0]  # 단일 단어는 절대 분할하지 않음
-    
-    # 🎯 스마트 2줄 분할 알고리즘
-    total_length = len(text)
-    target_line_length = min(max_line_length, total_length // 2 + 5)  # 균형잡힌 분할
-    
-    lines = []
-    current_line = ""
-    
-    for i, word in enumerate(words):
-        # 현재 줄에 단어를 추가했을 때의 길이 계산
-        test_line = current_line + (" " if current_line else "") + word
-        
-        # 🔍 첫 번째 줄 최적화: 적절한 길이에서 자연스럽게 분할
-        if len(lines) == 0:
-            if len(test_line) <= target_line_length or len(test_line) <= max_line_length:
-                current_line = test_line
-            else:
-                # 첫 번째 줄 완성 후 두 번째 줄 시작
-                if current_line:
-                    lines.append(current_line)
-                    current_line = word
-                else:
-                    current_line = word  # 첫 단어 자체가 긴 경우
-        
-        # 🔍 두 번째 줄: 남은 모든 단어 수용 (단어 완전성 보장)
-        elif len(lines) == 1:
-            current_line = test_line
-        
-        # 🚨 2줄 제한 강제: 더 이상 줄 추가 금지
-        else:
-            break
-    
-    # 마지막 줄 추가
-    if current_line:
-        lines.append(current_line)
-    
-    # 🛡️ 단어 완전성 최종 검증
-    result = "\n".join(lines)
-    
-    # 검증: 단어 분할 감지
-    word_integrity_check = True
-    split_violations = []
-    
-    for word in words:
-        if len(word) > 2:  # 2글자 이상 단어만 검사
-            # 단어가 줄 경계에서 분할되었는지 확인
-            for i in range(1, len(word)):
-                partial_word = word[:i]
-                remaining_part = word[i:]
-                if (partial_word + "\n") in result or ("\n" + remaining_part) in result:
-                    word_integrity_check = False
-                    split_violations.append(word)
-                    break
-    
-    # 🎯 결과 로깅
-    if len(lines) <= 2:
-        print(f"✅ 단어 단위 줄바꿈 적용: {len(lines)}줄 (완전성: {'✓' if word_integrity_check else '✗'})")
-        for i, line in enumerate(lines, 1):
-            print(f"   {i}줄: '{line}' (길이: {len(line)}자)")
-        if split_violations:
-            print(f"   ⚠️ 분할 위험 단어: {split_violations}")
-    else:
-        print(f"⚠️ 2줄 초과: {len(lines)}줄")
-    
-    # 🔧 긴급 수정: 단어 분할 발생시 강제 결합
-    if split_violations:
-        print("🔧 단어 분할 감지 - 긴급 수정 적용")
-        # 모든 텍스트를 첫 번째 줄에 결합
-        result = text
-    
-    return result
+    # 원본 텍스트를 그대로 반환 (줄바꿈 없음)
+    return text.strip()
 
 
 def seconds_to_srt_time(seconds: float) -> str:
@@ -354,75 +296,35 @@ def get_audio_duration(audio_path: str) -> float:
         return 60.0
 
 
-def create_video_with_subtitles(audio_path: str, srt_content: str, output_path: str, background_color: str = "black", video_resolution: str = "1080p"):
-    """비디오 생성 - 유튜브 최적화 다중 해상도 지원"""
+def create_video_with_subtitles(audio_path: str, ass_content: str, output_path: str, background_color: str = "black", video_resolution: str = "1080p"):
+    """비디오 생성 - ASS 자막을 사용한 한 줄 자막 완전 제어"""
     try:
         duration = get_audio_duration(audio_path)
         
-        # 🎬 해상도별 설정 (자막 공간 최대 활용)
+        # 🎬 해상도별 설정
         resolution_configs = {
-            "720p": {
-                "size": "1280x720",
-                "font_size": 18,        
-                "outline": 2,           
-                "margin": 30,           
-                "margin_lr": 10,        # 30 → 10 (최소한의 여백)
-                "description": "HD 720p"
-            },
-            "1080p": {
-                "size": "1920x1080", 
-                "font_size": 22,        
-                "outline": 2,           
-                "margin": 45,           
-                "margin_lr": 15,        # 40 → 15 (최소한의 여백)
-                "description": "Full HD 1080p (권장)"
-            },
-            "1440p": {
-                "size": "2560x1440",
-                "font_size": 28,        
-                "outline": 2,           
-                "margin": 60,           
-                "margin_lr": 20,        # 60 → 20 (최소한의 여백)
-                "description": "2K QHD"
-            },
-            "4k": {
-                "size": "3840x2160",
-                "font_size": 36,        
-                "outline": 3,           
-                "margin": 80,           
-                "margin_lr": 30,        # 80 → 30 (최소한의 여백)
-                "description": "4K UHD"
-            }
+            "720p": {"size": "1280x720", "description": "HD 720p"},
+            "1080p": {"size": "1920x1080", "description": "Full HD 1080p (권장)"},
+            "1440p": {"size": "2560x1440", "description": "2K QHD"},
+            "4k": {"size": "3840x2160", "description": "4K UHD"}
         }
         
-        # 선택된 해상도 설정 가져오기
         config = resolution_configs.get(video_resolution, resolution_configs["1080p"])
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as srt_file:
-            srt_file.write(srt_content)
-            srt_path = srt_file.name
+        # ASS 파일로 임시 저장
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ass', delete=False, encoding='utf-8') as ass_file:
+            ass_file.write(ass_content)
+            ass_path = ass_file.name
         
-        # 동적 자막 스타일 생성 (최대 폭 제한으로 자동 여백)
-        font_style = (
-            f'FontSize={config["font_size"]},'
-            'PrimaryColour=&Hffffff,'   # 흰색 텍스트
-            'OutlineColour=&H000000,'   # 검은색 아웃라인
-            f'Outline={config["outline"]},'
-            'Shadow=1,'                 # 그림자 효과
-            'Alignment=2,'              # 하단 중앙 정렬
-            f'MarginV={config["margin"]},'  # 하단 여백만 유지
-            f'MarginL={config["margin_lr"]},'  # 좌우 여백으로 최대 폭 제한
-            f'MarginR={config["margin_lr"]}'   # 자막이 이 안에서만 표시됨
-        )
+        print(f"🎬 한 줄 자막 모드: {config['description']} ({config['size']}) - ASS 자막 사용, 줄바꿈 완전 비활성화")
         
-        print(f"🎬 비디오 생성: {config['description']} ({config['size']}) - 자막: {config['font_size']}px, 최대폭: {config['margin_lr']}px 여백")
-        
+        # FFmpeg 명령어 (ASS 자막 사용)
         cmd = [
             'ffmpeg',
             '-f', 'lavfi',
             '-i', f'color=c={background_color}:s={config["size"]}:d={duration}',
             '-i', audio_path,
-            '-vf', f'subtitles={srt_path}:force_style=\'{font_style}\'',
+            '-vf', f'ass={ass_path}',  # 🔥 ASS 필터 사용 (완전한 제어)
             '-c:v', 'libx264',
             '-preset', 'medium',
             '-crf', '23',
@@ -438,12 +340,13 @@ def create_video_with_subtitles(audio_path: str, srt_content: str, output_path: 
         if result.returncode != 0:
             raise Exception(f"FFmpeg 오류: {result.stderr}")
         
-        os.unlink(srt_path)
+        os.unlink(ass_path)
         
     except Exception as e:
-        if 'srt_path' in locals() and os.path.exists(srt_path):
-            os.unlink(srt_path)
+        if 'ass_path' in locals() and os.path.exists(ass_path):
+            os.unlink(ass_path)
         raise Exception(f"비디오 생성 실패: {str(e)}")
+
 
 
 # 서버 시작시 초기화
@@ -734,18 +637,18 @@ async def generate_subtitles_advanced(
             elif not postprocessor.is_available():
                 print("   이유: GPT 후처리기 사용 불가 (API 키 확인 필요)")
         
-        # 최종 단계: 비디오 생성
+        # 최종 단계: 비디오 생성 (ASS 자막 사용)
         final_stage_num = len(processing_stages) + 1
-        print(f"🎬 {final_stage_num}단계: 비디오 생성 중... ({video_resolution})")
-        srt_content = generate_srt(final_result["segments"], video_resolution)  # 해상도 매개변수 추가
+        print(f"🎬 {final_stage_num}단계: ASS 한 줄 자막 비디오 생성 중... ({video_resolution})")
+        ass_content = generate_ass(final_result["segments"], video_resolution)  # ASS 생성
         
-        # 🔍 디버깅용: SRT 내용 저장
-        debug_srt_path = OUTPUTS_DIR / f"{file_id}_advanced_subtitled_debug.srt"
-        with open(debug_srt_path, 'w', encoding='utf-8') as f:
-            f.write(srt_content)
-        print(f"🔍 디버깅용 SRT 저장: {debug_srt_path}")
+        # 🔍 디버깅용: ASS 내용 저장
+        debug_ass_path = OUTPUTS_DIR / f"{file_id}_advanced_subtitled_debug.ass"
+        with open(debug_ass_path, 'w', encoding='utf-8') as f:
+            f.write(ass_content)
+        print(f"🔍 디버깅용 ASS 저장: {debug_ass_path}")
         
-        create_video_with_subtitles(str(input_file), srt_content, str(output_file), background_color, video_resolution)
+        create_video_with_subtitles(str(input_file), ass_content, str(output_file), background_color, video_resolution)
         
         # 응답 데이터 구성
         response_data = {
@@ -926,7 +829,7 @@ async def test_smart_line_breaks():
 
 @app.get("/test-line-breaks")
 async def test_line_breaks():
-    """단어 단위 줄바꿈 기능 테스트"""
+    """한 줄 자막 모드 테스트 (줄바꿈 비활성화)"""
     
     # 테스트 케이스들
     test_cases = [
@@ -959,7 +862,7 @@ async def test_line_breaks():
         print(f"📝 원본: {case['text']}")
         print(f"📏 최대 길이: {case['max_length']}자")
         
-        # 줄바꿈 적용
+        # 한 줄 자막 처리 적용
         formatted = apply_word_based_line_breaks(case['text'], case['max_length'])
         lines = formatted.split('\n')
         
@@ -971,19 +874,20 @@ async def test_line_breaks():
             "line_count": len(lines),
             "lines": lines,
             "line_lengths": [len(line) for line in lines],
-            "word_integrity_maintained": '위\n하여' not in formatted and '줄거\n리' not in formatted
+            "single_line_mode": True  # 한 줄 모드 표시
         }
         
         results.append(result)
     
     return {
-        "message": "단어 단위 줄바꿈 테스트 완료",
+        "message": "한 줄 자막 모드 테스트 완료 (줄바꿈 비활성화)",
         "test_results": results,
+        "single_line_mode": True,
         "supported_resolutions": {
-            "720p": "35자 이하",
-            "1080p": "45자 이하", 
-            "1440p": "55자 이하",
-            "4k": "70자 이하"
+            "720p": "한 줄 표시",
+            "1080p": "한 줄 표시", 
+            "1440p": "한 줄 표시",
+            "4k": "한 줄 표시"
         }
     }
 @app.get("/download/{filename}")
