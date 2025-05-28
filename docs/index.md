@@ -1,62 +1,29 @@
 
 
-# 🎬 Audio-to-Voice 프로젝트
+# 🎬 Audio-to-Voice 프로젝트 계획 문서
 
-## 📖 **프로젝트 개요**
-한국어 음성을 텍스트로 변환하고 자막이 포함된 비디오를 생성하는 웹 애플리케이션
+> **📖 프로젝트 개요, 설치 방법, 사용법은 [README.md](../README.md) 참조**
 
-### **핵심 기능**
-- **음성 인식**: OpenAI Whisper-1 API 기반 한국어 최적화
-- **텍스트 교정**: GPT-4.1 mini 기반 후처리 (맞춤법, 외래어 표기법)
-- **자막 생성**: ASS 형식, 화면 중앙 한 줄 자막, 해상도별 최적화
-- **비디오 생성**: FFmpeg 기반, 다중 해상도 지원 (720p~4K)
+## 🎯 **개발 맥락 (코딩용)**
 
-## 🏗️ **시스템 아키텍처**
-
-### **백엔드** (포트: 8002)
-```
-backend/
-├── main_phase2.py              # 메인 API 서버 
-├── phase2_models.py            # AI 모델 관리
-├── phase2_postprocessing.py    # GPT 후처리
-├── phase2_quality.py           # 품질 분석
-├── phase2_streaming.py         # 실시간 처리
-└── templates/                  # 비디오 템플릿 (Phase 3.2)
-```
-
-### **프론트엔드** (포트: 3000)
-```
-frontend/src/
-├── app/
-│   ├── page.tsx               # 메인 페이지
-│   └── phase2/page.tsx        # Phase 2 고급 기능
-└── components/ui/             # UI 컴포넌트
-```
-
-### **처리 워크플로우**
-```
-음성 파일 업로드 → Whisper-1 전사 → 품질 분석 → GPT 교정 → ASS 자막 생성 → 비디오 출력
-```
-
-## 🔧 **주요 기술 스택**
-- **백엔드**: FastAPI, Python, OpenAI API
-- **프론트엔드**: Next.js, React, TypeScript, Tailwind CSS
-- **비디오 처리**: FFmpeg, ASS 자막 시스템
-- **AI**: OpenAI Whisper-1, GPT-4.1 mini
-
-## 📁 **디렉토리 구조**
-```
-/Users/hdh/Desktop/WORKSPACE/BATGAN/MY_PROJECTS/audio-to-voice/
-├── backend/           # API 서버
-├── frontend/          # 웹 인터페이스  
-├── docs/             # 프로젝트 문서
-├── uploads/          # 업로드된 파일
-├── outputs/          # 생성된 비디오
-└── templates/        # 비디오 템플릿 (Phase 3.2)
-```
-
-## 🚀 **현재 브랜치**: `feature/template-video-background`
+### **현재 브랜치**: `feature/template-video-background`
 **목표**: 정적 색상 배경 → 동적 비디오 배경 템플릿 시스템 구현
+
+### **Phase 2 완료 상태**
+- ✅ OpenAI Whisper-1 API 통합 (포트: 8002)
+- ✅ GPT-4.1 mini 후처리 교정 시스템
+- ✅ ASS 자막 (화면 중앙, 한 줄, 해상도별 최적화)
+- ✅ 한국어 특화 품질 분석 및 자동 재처리
+
+### **Phase 3.2 목표**
+**핵심**: `create_video_with_subtitles` 함수에서 색상 배경 → 비디오 배경 교체
+```python
+# Before: 정적 색상 배경
+color=c=black:s=1920x1080:d=90.0
+
+# After: 동적 비디오 배경 (길이 무관)
+-stream_loop 3 -i templates/particles.mp4 -t 90.0
+```
 
 ---
 
