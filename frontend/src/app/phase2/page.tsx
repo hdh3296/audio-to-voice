@@ -66,14 +66,22 @@ const Phase2AudioProcessor = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileId, setFileId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('whisper-1-optimized');
-  const [videoResolution, setVideoResolution] = useState<string>('1080p');  // 🆕 해상도 상태
-  const [enableGptPostprocessing, setEnableGptPostprocessing] = useState<boolean>(true);  // 🆕 GPT 후처리 기본값을 true로 변경
+  const [videoResolution, setVideoResolution] = useState<string>('1080p');
+  // 🆕 Phase 3.2.3: 템플릿 및 트랜지션 상태
+  const [templateName, setTemplateName] = useState<string>('particles_dark');
+  const [transitionType, setTransitionType] = useState<string>('fade');
+  const [transitionDuration, setTransitionDuration] = useState<number>(1.2);
+  const [transitionIntensity, setTransitionIntensity] = useState<number>(0.8);
+  const [availableTemplates, setAvailableTemplates] = useState<any>({});
+  const [useTemplateBackground, setUseTemplateBackground] = useState<boolean>(true);  // 템플릿 사용 여부
+  
+  const [enableGptPostprocessing, setEnableGptPostprocessing] = useState<boolean>(true);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<Record<string, ModelInfo>>({});
-  const [availableResolutions, setAvailableResolutions] = useState<Record<string, VideoResolution>>({});  // 🆕 해상도 상태
+  const [availableResolutions, setAvailableResolutions] = useState<Record<string, VideoResolution>>({});
   const [processingMode, setProcessingMode] = useState<string>('advanced');
   const [qualityAnalysis, setQualityAnalysis] = useState<QualityMetrics | null>(null);
   const [streamingProgress, setStreamingProgress] = useState<StreamingProgress | null>(null);
@@ -87,7 +95,8 @@ const Phase2AudioProcessor = () => {
   // 컴포넌트 마운트시 모델 정보 로드
   useEffect(() => {
     loadAvailableModels();
-    loadAvailableResolutions();  // 🆕 해상도 정보 로드
+    loadAvailableResolutions();
+    loadAvailableTemplates();  // 🆕 템플릿 정보 로드
     return () => {
       if (websocket) {
         websocket.close();
@@ -105,13 +114,24 @@ const Phase2AudioProcessor = () => {
     }
   };
 
-  const loadAvailableResolutions = async () => {  // 🆕 해상도 정보 로드 함수
+  const loadAvailableResolutions = async () => {
     try {
       const response = await fetch(`${API_BASE}/video-resolutions`);
       const data = await response.json();
       setAvailableResolutions(data.available_resolutions);
     } catch (err) {
       console.error('해상도 정보 로드 실패:', err);
+    }
+  };
+
+  // 🆕 템플릿 정보 로드 함수
+  const loadAvailableTemplates = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/templates`);
+      const data = await response.json();
+      setAvailableTemplates(data.available_templates);
+    } catch (err) {
+      console.error('템플릿 정보 로드 실패:', err);
     }
   };
 
@@ -170,31 +190,64 @@ const Phase2AudioProcessor = () => {
   };
 
   const processWithAdvanced = async () => {
-    const response = await fetch(`${API_BASE}/generate-subtitles-advanced/${fileId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        model: selectedModel,
-        language: 'ko',
-        background_color: 'black',
-        video_resolution: videoResolution,  // 🆕 해상도 매개변수 추가
-        enable_quality_analysis: 'true',
-        enable_auto_reprocessing: 'true',
-        enable_gpt_postprocessing: enableGptPostprocessing.toString(),  // 🆕 GPT 후처리 옵션 전달
-        target_quality: '0.8'
-      })
-    });
+    // 🆕 Phase 3.2.3: 템플릿 사용 여부에 따라 다른 API 호출
+    if (useTemplateBackground) {
+      const response = await fetch(`${API_BASE}/generate-subtitles-template/${fileId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          language: 'ko',
+          template_name: templateName,
+          video_resolution: videoResolution,
+          transition_type: transitionType,
+          transition_duration: transitionDuration,
+          transition_intensity: transitionIntensity,
+          enable_quality_analysis: true,
+          enable_auto_reprocessing: true,
+          enable_gpt_postprocessing: enableGptPostprocessing,
+          target_quality: 0.8
+        })
+      });
 
-    if (!response.ok) throw new Error('처리 실패');
+      if (!response.ok) throw new Error('템플릿 처리 실패');
 
-    const data = await response.json();
-    setResult(data);
+      const data = await response.json();
+      setResult(data);
 
-    if (data.quality_metrics) {
-      setQualityAnalysis(data.quality_metrics);
+      if (data.quality_metrics) {
+        setQualityAnalysis(data.quality_metrics);
+      }
+
+      setProgress(100);
+    } else {
+      // 기존 방식 (색상 배경)
+      const response = await fetch(`${API_BASE}/generate-subtitles-advanced/${fileId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          model: selectedModel,
+          language: 'ko',
+          background_color: 'black',
+          video_resolution: videoResolution,
+          enable_quality_analysis: 'true',
+          enable_auto_reprocessing: 'true',
+          enable_gpt_postprocessing: enableGptPostprocessing.toString(),
+          target_quality: '0.8'
+        })
+      });
+
+      if (!response.ok) throw new Error('처리 실패');
+
+      const data = await response.json();
+      setResult(data);
+
+      if (data.quality_metrics) {
+        setQualityAnalysis(data.quality_metrics);
+      }
+
+      setProgress(100);
     }
-
-    setProgress(100);
   };
 
   const processWithStreaming = async () => {
@@ -288,11 +341,16 @@ const Phase2AudioProcessor = () => {
       {/* 헤더 */}
       <div className="text-center space-y-2">
         <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          🚀 Phase 2: 차세대 음성 인식
+          🎬 Phase 3.2.3: 트랜지션 템플릿 시스템
         </h1>
         <p className="text-gray-600">
-          실시간 스트리밍 • 지능형 품질 검증 • 자동 재처리
+          동적 배경 템플릿 • 스무스 트랜지션 • 지능형 품질 검증 • GPT 후처리
         </p>
+        <div className="flex justify-center gap-2 mt-2">
+          <Badge variant="secondary" className="text-xs">실시간 스트리밍</Badge>
+          <Badge variant="secondary" className="text-xs">🌟 트랜지션 효과</Badge> 
+          <Badge variant="secondary" className="text-xs">템플릿 배경</Badge>
+        </div>
       </div>
 
       {/* 파일 업로드 */}
@@ -338,7 +396,7 @@ const Phase2AudioProcessor = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">  {/* 3열 그리드로 변경 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">AI 모델 선택</label>
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
@@ -389,31 +447,189 @@ const Phase2AudioProcessor = () => {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              {/* 🆕 비디오 해상도 선택 */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">비디오 해상도</label>
-                <Select value={videoResolution} onValueChange={setVideoResolution}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(availableResolutions).map(([key, info]) => (
-                      <SelectItem key={key} value={key}>
-                        <div className="flex items-center justify-between w-full">
-                          <span>{info.description} ({info.size})</span>
-                          {info.default && (
-                            <Badge variant="outline" className="ml-2">기본값</Badge>
-                          )}
+            {/* 🆕 Phase 3.2.3: 배경 및 템플릿 설정 */}
+            <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-medium text-purple-900">🎬 배경 비디오 설정</h3>
+                    <p className="text-sm text-purple-700">동적 배경 템플릿으로 전문적인 영상을 만들어보세요</p>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="use-template"
+                      checked={useTemplateBackground}
+                      onChange={(e) => setUseTemplateBackground(e.target.checked)}
+                      className="w-4 h-4 text-purple-600 bg-white border-purple-300 rounded focus:ring-purple-500"
+                    />
+                    <label htmlFor="use-template" className="ml-2 text-sm font-medium text-purple-900 cursor-pointer">
+                      템플릿 배경 사용
+                    </label>
+                  </div>
+                </div>
+
+                {useTemplateBackground && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 템플릿 선택 */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-purple-900">배경 템플릿</label>
+                      <Select value={templateName} onValueChange={setTemplateName}>
+                        <SelectTrigger className="bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(availableTemplates).map(([key, template]: [string, any]) => (
+                            <SelectItem key={key} value={key}>
+                              <div className="flex items-center justify-between w-full">
+                                <div>
+                                  <div className="font-medium">{template.name}</div>
+                                  <div className="text-xs text-gray-500">{template.description}</div>
+                                </div>
+                                {template.available && (
+                                  <Badge variant="secondary" className="ml-2">사용가능</Badge>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {availableTemplates[templateName] && (
+                        <div className="text-xs text-purple-600 space-y-1">
+                          <p>🎭 카테고리: {availableTemplates[templateName].category}</p>
+                          <p>⏱️ 길이: {availableTemplates[templateName].duration?.toFixed(1)}초</p>
+                          <p>📺 해상도: {availableTemplates[templateName].resolution}</p>
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {availableResolutions[videoResolution] && (
-                  <div className="text-xs text-gray-500 space-y-1">
-                    <p>🎬 크기: {availableResolutions[videoResolution].size}</p>
-                    <p>📺 용도: {availableResolutions[videoResolution].recommended_for}</p>
+                      )}
+                    </div>
+
+                    {/* 비디오 해상도 */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-purple-900">비디오 해상도</label>
+                      <Select value={videoResolution} onValueChange={setVideoResolution}>
+                        <SelectTrigger className="bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(availableResolutions).map(([key, info]) => (
+                            <SelectItem key={key} value={key}>
+                              <div className="flex items-center justify-between w-full">
+                                <span>{info.description} ({info.size})</span>
+                                {info.default && (
+                                  <Badge variant="outline" className="ml-2">기본값</Badge>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {availableResolutions[videoResolution] && (
+                        <div className="text-xs text-purple-600 space-y-1">
+                          <p>🎬 크기: {availableResolutions[videoResolution].size}</p>
+                          <p>📺 용도: {availableResolutions[videoResolution].recommended_for}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 🌟 트랜지션 효과 설정 */}
+                {useTemplateBackground && (
+                  <div className="mt-4 p-4 bg-white rounded-lg border border-purple-100">
+                    <h4 className="text-sm font-medium text-purple-900 mb-3 flex items-center gap-2">
+                      🌟 트랜지션 효과 
+                      <Badge variant="secondary" className="text-xs">Phase 3.2.3</Badge>
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* 트랜지션 타입 */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-gray-700">전환 효과</label>
+                        <Select value={transitionType} onValueChange={setTransitionType}>
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fade">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-black rounded-full"></div>
+                                페이드 (부드러운 전환)
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="crossfade">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+                                크로스페이드 (겹침 전환)
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="dissolve">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-gradient-to-br from-pink-400 to-orange-400 rounded-full"></div>
+                                디졸브 (용해 전환)
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="none">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                                없음 (즉시 전환)
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* 트랜지션 길이 */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-gray-700">
+                          전환 길이: {transitionDuration.toFixed(1)}초
+                        </label>
+                        <input
+                          type="range"
+                          min="0.3"
+                          max="3.0"
+                          step="0.1"
+                          value={transitionDuration}
+                          onChange={(e) => setTransitionDuration(parseFloat(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          disabled={transitionType === 'none'}
+                        />
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>빠름</span>
+                          <span>느림</span>
+                        </div>
+                      </div>
+
+                      {/* 트랜지션 강도 */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-gray-700">
+                          전환 강도: {(transitionIntensity * 100).toFixed(0)}%
+                        </label>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="1.0"
+                          step="0.1"
+                          value={transitionIntensity}
+                          onChange={(e) => setTransitionIntensity(parseFloat(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          disabled={transitionType === 'none'}
+                        />
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>약함</span>
+                          <span>강함</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 트랜지션 설명 */}
+                    <div className="mt-3 p-2 bg-purple-50 rounded text-xs text-purple-700">
+                      {transitionType === 'fade' && '🌑 템플릿이 부드럽게 어두워졌다가 다시 밝아지며 전환됩니다'}
+                      {transitionType === 'crossfade' && '🌈 이전 루프와 다음 루프가 자연스럽게 겹쳐지며 전환됩니다'}
+                      {transitionType === 'dissolve' && '✨ 픽셀 단위로 서서히 용해되며 아티스틱하게 전환됩니다'}
+                      {transitionType === 'none' && '⚡ 트랜지션 효과 없이 즉시 전환됩니다 (빠른 처리)'}
+                    </div>
                   </div>
                 )}
               </div>

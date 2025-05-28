@@ -1,0 +1,130 @@
+# 🚀 Audio-to-Voice 프로젝트 개발 지침
+
+## 📋 **프로젝트 기본 정보**
+- **프로젝트명**: Audio-to-Voice (한국어 음성 → 자막 비디오 변환)
+- **현재 Phase**: Phase 3.2 (템플릿 기반 동적 비디오 배경 시스템)
+- **메인 서버**: Phase 2 서버 (포트: 8002)
+- **프론트엔드**: Next.js (포트: 3000)
+
+---
+
+## 🔧 **Desktop Commander MCP 서버 관리 지침**
+
+### ✅ **서버 상태 확인 (항상 먼저 실행)**
+```bash
+# 1단계: 서버 프로세스 확인
+ps aux | grep "main_phase2.py" | grep -v grep
+
+# 2단계: 서버 응답 확인 (더 정확함)
+curl -s "http://localhost:8002/health" | python3 -c "import sys, json; data=json.load(sys.stdin); print('✅ 서버 정상 작동' if data.get('status')=='healthy' else '❌ 서버 문제 있음')" 2>/dev/null || echo "❌ 서버 응답 없음"
+```
+
+### 🚀 **서버 시작 (논블로킹 방식)**
+```bash
+# 서버가 실행되지 않은 경우에만 시작
+cd "/Users/hdh/Desktop/WORKSPACE/BATGAN/MY_PROJECTS/audio-to-voice/backend" && source venv/bin/activate && nohup python main_phase2.py > ../server_phase2.log 2>&1 &
+
+# 3초 대기 후 상태 확인
+sleep 3 && curl -s "http://localhost:8002/health" >/dev/null && echo "✅ 서버 시작 완료" || echo "⏳ 서버 시작 중..."
+```
+
+### 🔄 **서버 재시작 (스마트 재시작)**
+```bash
+# 1단계: 기존 서버 종료 (강제 종료)
+pkill -f "main_phase2.py" 2>/dev/null && echo "🛑 기존 서버 종료" || echo "ℹ️ 실행중인 서버 없음"
+
+# 2단계: 포트 정리 (필요시)
+lsof -ti:8002 2>/dev/null | xargs kill -9 2>/dev/null || echo "포트 8002 정리 완료"
+
+# 3단계: 잠시 대기 (프로세스 정리 시간)
+sleep 2
+
+# 4단계: 새 서버 시작
+cd "/Users/hdh/Desktop/WORKSPACE/BATGAN/MY_PROJECTS/audio-to-voice/backend" && source venv/bin/activate && nohup python main_phase2.py > ../server_phase2.log 2>&1 &
+
+# 5단계: 서버 준비 대기 (최대 10초)
+for i in {1..10}; do sleep 1; curl -s "http://localhost:8002/health" >/dev/null 2>&1 && echo "✅ 서버 재시작 완료 (${i}초 소요)" && break; done
+```
+
+### 📄 **로그 확인**
+```bash
+# 최근 서버 로그 확인
+tail -20 "/Users/hdh/Desktop/WORKSPACE/BATGAN/MY_PROJECTS/audio-to-voice/server_phase2.log" 2>/dev/null || echo "로그 파일 없음"
+
+# 실시간 로그 모니터링 (필요시)
+tail -f "/Users/hdh/Desktop/WORKSPACE/BATGAN/MY_PROJECTS/audio-to-voice/server_phase2.log" 2>/dev/null
+```
+
+### ⚠️ **주의사항**
+1. **timeout_ms 설정**: 서버 시작은 최대 5000ms (5초)로 제한
+2. **상태 확인 우선**: 항상 현재 상태부터 확인 후 작업 진행
+3. **논블로킹 실행**: `&` 사용으로 백그라운드 실행, 즉시 다음 단계 진행
+4. **단계별 검증**: 각 단계마다 성공 여부 확인 후 진행
+5. **로그 활용**: 문제 발생 시 반드시 로그 확인
+
+---
+
+## 🎬 **Phase 3.2 템플릿 시스템 지침**
+
+### 📁 **템플릿 파일 구조**
+```
+backend/templates/
+├── particles_dark.mp4          # 메인 템플릿 (25.96초)
+├── template_config.json        # 템플릿 설정
+└── preview/
+    └── particles_dark.jpg      # 미리보기 이미지
+```
+
+### 🔧 **템플릿 시스템 핵심 원칙**
+1. **동적 루프**: 음성 길이에 맞춰 템플릿 자동 반복
+2. **오디오 분리**: 템플릿 비디오 오디오 제거, 원본 음성만 사용 (`-map 0:v -map 1:a`)
+3. **해상도 대응**: 720p, 1080p, 1440p, 4K 모든 해상도 지원
+4. **기존 호환성**: Phase 2 모든 기능 (GPT 교정, 품질 분석) 완전 호환
+
+### 🧪 **템플릿 API 테스트**
+```bash
+# 템플릿 목록 확인
+curl -s "http://localhost:8002/templates" | python3 -m json.tool
+
+# 템플릿 기반 비디오 생성 테스트
+curl -X POST "http://localhost:8002/generate-subtitles-template/{FILE_ID}" \
+  -H "Content-Type: application/json" \
+  -d '{"template_name": "particles_dark", "video_resolution": "1080p"}'
+```
+
+---
+
+## 💡 **개발 워크플로우 권장 사항**
+
+### 🔄 **코드 변경 후 테스트 순서**
+1. 서버 상태 확인 → 필요시 재시작
+2. API 엔드포인트 테스트
+3. 실제 파일 업로드 및 처리 테스트
+4. 생성된 비디오 품질 확인 (오디오, 자막, 배경)
+
+### 📝 **디버깅 체크리스트**
+- [ ] 서버 응답 상태 (health check)
+- [ ] 로그 파일 최근 에러 확인
+- [ ] 템플릿 파일 존재 여부
+- [ ] 생성된 비디오 파일 크기 및 스트림 정보
+- [ ] 오디오 볼륨 레벨 (-26dB ~ -3dB 정상 범위)
+
+---
+
+## 🎯 **성능 최적화 지침**
+
+### ⚡ **빠른 처리를 위한 설정**
+- **기본 해상도**: 1080p (유튜브 최적화)
+- **권장 모델**: whisper-1-optimized
+- **GPT 교정**: 기본 활성화 (품질 향상)
+- **템플릿 길이**: 25-30초 권장 (너무 짧으면 반복 빈도 높음)
+
+### 🔍 **품질 검증 기준**
+- **음성 인식**: 99% 정확도 목표
+- **오디오 볼륨**: -26dB ~ -3dB 범위
+- **GPT 교정**: 품질 점수 0.8 이상
+- **처리 시간**: 90초 음성 → 10초 이내 처리
+
+---
+
+**⚠️ 이 지침을 따라 모든 서버 관리 작업을 수행하세요. 문제 발생 시 단계별로 진행하며 각 단계의 결과를 확인하세요.**

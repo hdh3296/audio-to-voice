@@ -29,6 +29,9 @@ from phase2_streaming import StreamingTranscriber, StreamingProgress
 from phase2_quality import QualityAnalyzer, AutoReprocessor
 from phase2_postprocessing import Phase2PostProcessor
 
+# 🆕 Phase 3.2: 템플릿 시스템 임포트 (Phase 3.2.3 트랜지션 포함)
+from phase3_templates import TemplateManager, create_looped_template_video, TransitionConfig, TransitionConfig, TransitionConfig
+
 # 환경변수 로드
 load_dotenv()
 
@@ -68,6 +71,7 @@ streaming_transcriber: Optional[StreamingTranscriber] = None
 quality_analyzer: Optional[QualityAnalyzer] = None
 auto_reprocessor: Optional[AutoReprocessor] = None
 postprocessor: Optional[Phase2PostProcessor] = None
+template_manager: Optional[TemplateManager] = None  # 🆕 템플릿 매니저
 api_available = False
 
 # WebSocket 연결 관리
@@ -76,7 +80,7 @@ websocket_connections: Dict[str, WebSocket] = {}
 
 def init_phase2_systems():
     """Phase 2 시스템 초기화"""
-    global model_manager, streaming_transcriber, quality_analyzer, auto_reprocessor, postprocessor, api_available
+    global model_manager, streaming_transcriber, quality_analyzer, auto_reprocessor, postprocessor, template_manager, api_available
     
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key and api_key != "your_openai_api_key_here":
@@ -103,8 +107,12 @@ def init_phase2_systems():
             postprocessor = Phase2PostProcessor(api_key)
             print("✅ GPT 후처리기 초기화 완료")
             
+            # 🆕 템플릿 매니저 초기화
+            template_manager = TemplateManager()
+            print("✅ 템플릿 매니저 초기화 완료")
+            
             api_available = True
-            print("🎉 Phase 2 시스템 초기화 성공!")
+            print("🎉 Phase 2 + 3.2 시스템 초기화 성공!")
             
         except Exception as e:
             print(f"❌ Phase 2 시스템 초기화 실패: {str(e)}")
@@ -299,9 +307,41 @@ def get_audio_duration(audio_path: str) -> float:
         return 60.0
 
 
-def create_video_with_subtitles(audio_path: str, ass_content: str, output_path: str, background_color: str = "black", video_resolution: str = "1080p"):
-    """비디오 생성 - ASS 자막을 사용한 화면 중앙 한 줄 자막 완전 제어"""
+def create_video_with_subtitles(
+    audio_path: str, 
+    ass_content: str, 
+    output_path: str, 
+    background_color: str = "black", 
+    background_type: str = "color",  # 🆕 "color" | "template"
+    template_name: str = "particles_dark",  # 🆕 템플릿 이름
+    video_resolution: str = "1080p"
+):
+    """
+    비디오 생성 - 색상 배경 또는 템플릿 배경 선택 가능
+    🆕 Phase 3.2: 템플릿 기반 동적 비디오 배경 지원
+    """
     try:
+        # 🆕 템플릿 배경 사용
+        if background_type == "template" and template_manager:
+            print(f"🎬 템플릿 배경 모드: {template_name}")
+            success = create_looped_template_video(
+                audio_path=audio_path,
+                template_name=template_name,
+                output_path=output_path,
+                ass_content=ass_content,
+                video_resolution=video_resolution,
+                template_manager=template_manager
+            )
+            
+            if success:
+                print(f"✅ 템플릿 기반 비디오 생성 완료: {output_path}")
+                return
+            else:
+                print("⚠️ 템플릿 생성 실패 - 색상 배경으로 대체")
+                # 템플릿 실패시 색상 배경으로 폴백
+        
+        # 기존 색상 배경 생성 (기본값 또는 폴백)
+        print(f"🎨 색상 배경 모드: {background_color}")
         duration = get_audio_duration(audio_path)
         
         # 🎬 해상도별 설정
@@ -319,9 +359,9 @@ def create_video_with_subtitles(audio_path: str, ass_content: str, output_path: 
             ass_file.write(ass_content)
             ass_path = ass_file.name
         
-        print(f"🎬 화면 중앙 한 줄 자막 + 좌우 여백: {config['description']} ({config['size']}) - ASS 자막 사용, 줄바꿈 완전 비활성화")
+        print(f"🎬 화면 중앙 한 줄 자막 + 좌우 여백: {config['description']} ({config['size']}) - ASS 자막 사용")
         
-        # FFmpeg 명령어 (ASS 자막 사용)
+        # FFmpeg 명령어 (기존 색상 배경)
         cmd = [
             'ffmpeg',
             '-f', 'lavfi',
@@ -344,6 +384,7 @@ def create_video_with_subtitles(audio_path: str, ass_content: str, output_path: 
             raise Exception(f"FFmpeg 오류: {result.stderr}")
         
         os.unlink(ass_path)
+        print(f"✅ 색상 배경 비디오 생성 완료: {output_path}")
         
     except Exception as e:
         if 'ass_path' in locals() and os.path.exists(ass_path):
@@ -414,6 +455,237 @@ async def api_status():
             "WebSocket 실시간 업데이트"
         ]
     }
+
+
+@app.get("/templates")
+async def get_templates():
+    """🆕 Phase 3.2: 사용 가능한 템플릿 목록"""
+    if not template_manager:
+        raise HTTPException(status_code=503, detail="Template manager not available")
+    
+    try:
+        templates = template_manager.get_available_templates()
+        template_info = {}
+        
+        for template_name in templates:
+            info = template_manager.get_template_info(template_name)
+            if info:
+                template_info[template_name] = {
+                    "name": info.name,
+                    "description": info.description,
+                    "category": info.category,
+                    "duration": info.duration,
+                    "resolution": info.resolution,
+                    "preview_image": info.preview_image,
+                    "recommended_for": info.recommended_for,
+                    "available": template_manager.validate_template(template_name)
+                }
+        
+        return {
+            "available_templates": template_info,
+            "total_count": len(templates),
+            "default_template": "particles_dark",
+            # 🆕 Phase 3.2.3: 트랜지션 정보 추가
+            "transition_types": template_manager.templates_data.get("config", {}).get("transition_types", {})
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"템플릿 목록 조회 중 오류: {str(e)}")
+
+
+@app.get("/templates/{template_name}")
+async def get_template_info_api(template_name: str):
+    """🆕 Phase 3.2: 특정 템플릿 상세 정보"""
+    if not template_manager:
+        raise HTTPException(status_code=503, detail="Template manager not available")
+    
+    try:
+        info = template_manager.get_template_info(template_name)
+        if not info:
+            raise HTTPException(status_code=404, detail=f"템플릿 '{template_name}'을 찾을 수 없습니다")
+        
+        # 실제 비디오 길이 감지
+        duration = template_manager.get_template_duration(template_name)
+        
+        return {
+            "template_name": template_name,
+            "info": {
+                "name": info.name,
+                "description": info.description,
+                "category": info.category,
+                "duration": duration,  # 실제 감지된 길이
+                "resolution": info.resolution,
+                "preview_image": info.preview_image,
+                "recommended_for": info.recommended_for,
+                "created_at": info.created_at
+            },
+            "available": template_manager.validate_template(template_name),
+            "path": template_manager.get_template_path(template_name)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"템플릿 정보 조회 중 오류: {str(e)}")
+
+
+@app.post("/generate-subtitles-template/{file_id}")
+async def generate_subtitles_template(
+    file_id: str,
+    model: str = "whisper-1-optimized",
+    language: str = "ko",
+    template_name: str = "particles_dark",  # 🆕 템플릿 선택
+    video_resolution: str = "1080p",
+    # 🆕 Phase 3.2.3: 트랜지션 설정
+    transition_type: str = "crossfade",     # crossfade, fade, dissolve, wipe, none
+    transition_duration: float = 1.2,      # 트랜지션 길이 (초)
+    transition_intensity: float = 0.8,     # 트랜지션 강도 (0.0~1.0)
+    enable_quality_analysis: bool = True,
+    enable_auto_reprocessing: bool = True,
+    enable_gpt_postprocessing: bool = True,
+    target_quality: float = 0.8
+):
+    """🆕 Phase 3.2: 템플릿 기반 자막 비디오 생성"""
+    if not api_available:
+        raise HTTPException(status_code=503, detail="Phase 2 features not available")
+    
+    if not template_manager:
+        raise HTTPException(status_code=503, detail="Template manager not available")
+    
+    try:
+        uploaded_files = list(UPLOADS_DIR.glob(f"{file_id}.*"))
+        if not uploaded_files:
+            raise HTTPException(status_code=404, detail="업로드된 파일을 찾을 수 없습니다.")
+        
+        input_file = uploaded_files[0]
+        output_file = OUTPUTS_DIR / f"{file_id}_template_subtitled.mp4"
+        
+        # 템플릿 검증
+        if not template_manager.validate_template(template_name):
+            raise HTTPException(status_code=400, detail=f"템플릿 '{template_name}'을 사용할 수 없습니다")
+        
+        processing_stages = []
+        print(f"🎬 템플릿 기반 자막 생성 시작: {template_name} + {model} 모델")
+        
+        # 1단계: 초기 전사 (기존과 동일)
+        print("📝 1단계: 초기 전사 중...")
+        processing_stages.append("초기 전사")
+        result = await model_manager.transcribe_with_model(
+            str(input_file), model, language, include_quality_metrics=True
+        )
+        
+        if not result.success:
+            raise HTTPException(status_code=500, detail=result.error)
+        
+        initial_result = {
+            "text": result.text,
+            "segments": result.segments,
+            "processing_time": result.processing_time,
+            "model_used": result.model_used,
+            "confidence_score": result.confidence_score
+        }
+        
+        # 2단계: 품질 분석 (기존과 동일)
+        quality_metrics = None
+        if enable_quality_analysis and quality_analyzer:
+            print("🔍 2단계: 품질 분석 중...")
+            processing_stages.append("품질 분석")
+            quality_metrics = await quality_analyzer.analyze_transcription_quality(
+                result.text, result.segments, result.processing_time, result.model_used
+            )
+            print(f"📊 품질 점수: {quality_metrics.overall_score:.3f}")
+        
+        # 3단계: 자동 재처리 (기존과 동일)
+        final_result = initial_result
+        if enable_auto_reprocessing and auto_reprocessor and quality_metrics:
+            if quality_metrics.needs_reprocessing and quality_metrics.overall_score < target_quality:
+                print("🔄 3단계: 자동 재처리 중...")
+                processing_stages.append("자동 재처리")
+                final_result = await auto_reprocessor.auto_reprocess_if_needed(
+                    str(input_file), initial_result, target_quality
+                )
+        
+        # 4단계: GPT 후처리 (기존과 동일)
+        postprocessing_result = None
+        if enable_gpt_postprocessing and postprocessor and postprocessor.is_available():
+            print("🤖 4단계: GPT 후처리 중...")
+            processing_stages.append("GPT 후처리")
+            
+            postprocessing_result = await postprocessor.process_with_progress(
+                segments=final_result["segments"],
+                quality_metrics=quality_metrics.__dict__ if hasattr(quality_metrics, '__dict__') else None
+            )
+            
+            if postprocessing_result["success"] and postprocessing_result["correction_applied"]:
+                final_result["segments"] = postprocessing_result["corrected_segments"]
+                final_result["text"] = " ".join([seg["text"] for seg in postprocessing_result["corrected_segments"]])
+                final_result["gpt_correction_applied"] = True
+                final_result["total_corrections"] = postprocessing_result["total_corrections"]
+                final_result["correction_strategy"] = postprocessing_result["correction_strategy"]
+                final_result["gpt_quality_score"] = postprocessing_result["final_quality_score"]
+                
+                print(f"✅ GPT 교정 완료: {postprocessing_result['total_corrections']}개 항목 수정")
+        
+        # 🆕 5단계: 템플릿 기반 비디오 생성
+        final_stage_num = len(processing_stages) + 1
+        print(f"🎬 {final_stage_num}단계: 템플릿 기반 비디오 생성 중... ({template_name})")
+        ass_content = generate_ass(final_result["segments"], video_resolution)
+        
+        # 템플릿 정보 로그
+        template_info = template_manager.get_template_info(template_name)
+        template_duration = template_manager.get_template_duration(template_name)
+        audio_duration = get_audio_duration(str(input_file))
+        
+        print(f"🎯 템플릿 상세:")
+        print(f"   이름: {template_info.name if template_info else template_name}")
+        print(f"   길이: {template_duration:.2f}초")
+        print(f"   음성 길이: {audio_duration:.2f}초")
+        
+        # 템플릿 기반 비디오 생성
+        create_video_with_subtitles(
+            audio_path=str(input_file),
+            ass_content=ass_content,
+            output_path=str(output_file),
+            background_type="template",  # 🆕 템플릿 모드
+            template_name=template_name,  # 🆕 템플릿 이름
+            video_resolution=video_resolution
+        )
+        
+        # 응답 데이터 구성
+        response_data = {
+            "file_id": file_id,
+            "output_file": f"{file_id}_template_subtitled.mp4",
+            "download_url": f"/download/{file_id}_template_subtitled.mp4",
+            "transcript": final_result["text"],
+            "segments_count": len(final_result["segments"]),
+            "language": language,
+            "processing_method": "phase3_2_template",  # 🆕 템플릿 방식
+            "processing_stages": processing_stages,
+            "model_used": final_result.get("model_used", model),
+            "template_used": template_name,  # 🆕 사용된 템플릿
+            "template_duration": template_duration,  # 🆕 템플릿 길이
+            "audio_duration": audio_duration,  # 🆕 음성 길이
+            "video_resolution": video_resolution,
+            "gpt_postprocessing_enabled": enable_gpt_postprocessing,
+            "message": f"템플릿 '{template_name}' 기반 자막 비디오가 성공적으로 생성되었습니다. ({video_resolution})"
+        }
+        
+        # GPT 후처리 결과 추가
+        if postprocessing_result:
+            response_data.update({
+                "gpt_correction_applied": final_result.get("gpt_correction_applied", False),
+                "total_corrections": final_result.get("total_corrections", 0),
+                "correction_strategy": final_result.get("correction_strategy", ""),
+                "gpt_quality_score": final_result.get("gpt_quality_score", 0)
+            })
+        
+        return response_data
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ 템플릿 기반 자막 생성 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"템플릿 기반 자막 생성 중 오류: {str(e)}")
 
 
 @app.get("/video-resolutions")
