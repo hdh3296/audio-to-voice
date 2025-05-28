@@ -2,6 +2,8 @@
 
 # 🎬 Audio-to-Voice 프로젝트 계획 문서
 
+> **⚠️ 코딩 지침: [.windsurfrules](../.windsurfrules) 반드시 확인** ← 가장 중요!
+> 
 > **📖 프로젝트 개요, 설치 방법, 사용법은 [README.md](../README.md) 참조**
 
 ## 🎯 **개발 맥락 (코딩용)**
