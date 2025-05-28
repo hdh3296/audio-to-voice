@@ -233,33 +233,63 @@ def create_fade_loop(
     """Fade 트랜지션으로 루프 비디오 생성 (안정적)"""
     
     try:
-        additional_loops = max(0, math.ceil(audio_duration / template_duration) - 1)
+        # 필요한 총 루프 횟수 계산 (오디오 길이에 맞게)
+        loops_needed = math.ceil(audio_duration / template_duration)
         fade_duration = min(transition_config.duration / 2, template_duration / 8)  # 템플릿 길이의 1/8 이하
         
-        print(f"🌑 Fade 트랜지션 루프 생성:")
-        print(f"   추가 루프: {additional_loops}회")
+        print(f"🌙 Fade 트랜지션 루프 생성:")
+        print(f"   필요한 루프: {loops_needed}회")
         print(f"   페이드 길이: {fade_duration:.2f}초")
         
-        # 각 루프 끝에 페이드 아웃, 시작에 페이드 인 적용
+        # 임시 파일을 사용하여 페이드 인/아웃이 적용된 단일 루프 생성
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_single_loop:
+            single_loop_path = temp_single_loop.name
+        
+        # 1. 먼저 페이드 인/아웃이 적용된 단일 루프 생성
         filter_complex = f"fade=t=out:st={template_duration - fade_duration}:d={fade_duration},fade=t=in:st=0:d={fade_duration}"
         
-        cmd = [
+        single_loop_cmd = [
             'ffmpeg',
-            '-stream_loop', str(additional_loops),
             '-i', template_path,
             '-vf', filter_complex,
-            '-t', str(audio_duration),
             '-c:v', 'libx264',
             '-preset', 'medium', 
             '-crf', '23',
+            '-an',  # 오디오 제거
+            '-y',
+            single_loop_path
+        ]
+        
+        result = subprocess.run(single_loop_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"⚠️ 단일 루프 생성 실패: {result.stderr}")
+            if os.path.exists(single_loop_path):
+                os.unlink(single_loop_path)
+            return create_basic_looped_video(template_path, audio_duration, template_duration, output_temp_path)
+        
+        # 2. 생성된 단일 루프를 여러 번 반복하여 최종 비디오 생성
+        final_cmd = [
+            'ffmpeg',
+            '-stream_loop', str(loops_needed - 1),  # 첫 번째 루프는 이미 포함되어 있으므로 -1
+            '-i', single_loop_path,
+            '-t', str(audio_duration),  # 오디오 길이로 자름
+            '-c:v', 'libx264',
+            '-preset', 'medium', 
+            '-crf', '23',
+            '-an',  # 오디오 제거 (최종 비디오에서는 원본 오디오 사용)
             '-y',
             output_temp_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(final_cmd, capture_output=True, text=True)
+        
+        # 임시 파일 삭제
+        if os.path.exists(single_loop_path):
+            os.unlink(single_loop_path)
         
         if result.returncode != 0:
-            print(f"⚠️ Fade 실패, 기본 루프로 대체: {result.stderr}")
+            print(f"⚠️ Fade 루프 생성 실패: {result.stderr}")
             return create_basic_looped_video(template_path, audio_duration, template_duration, output_temp_path)
         
         print(f"✅ Fade 루프 비디오 생성 완료")
@@ -292,22 +322,65 @@ def create_crossfade_loop(
 def create_basic_looped_video(template_path: str, audio_duration: float, template_duration: float, output_temp_path: str) -> bool:
     """기본 루프 비디오 생성 (트랜지션 없음)"""
     try:
-        additional_loops = max(0, math.ceil(audio_duration / template_duration) - 1)
+        # 필요한 총 루프 횟수 계산 (오디오 길이에 맞게)
+        loops_needed = math.ceil(audio_duration / template_duration)
         
-        cmd = [
+        print(f"🔄 기본 루프 비디오 생성:")
+        print(f"   필요한 루프: {loops_needed}회")
+        print(f"   템플릿 길이: {template_duration:.2f}초")
+        print(f"   오디오 길이: {audio_duration:.2f}초")
+        
+        # 두 단계로 나누어 처리
+        # 1. 먼저 템플릿을 복사하여 준비
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_single_loop:
+            single_loop_path = temp_single_loop.name
+        
+        # 템플릿 복사 (트랜지션 없이)
+        copy_cmd = [
             'ffmpeg',
-            '-stream_loop', str(additional_loops),
             '-i', template_path,
-            '-t', str(audio_duration),
             '-c:v', 'libx264',
             '-preset', 'medium',
             '-crf', '23',
+            '-an',  # 오디오 제거
+            '-y',
+            single_loop_path
+        ]
+        
+        result = subprocess.run(copy_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"⚠️ 템플릿 복사 실패: {result.stderr}")
+            if os.path.exists(single_loop_path):
+                os.unlink(single_loop_path)
+            return False
+        
+        # 2. 복사된 템플릿을 여러 번 반복하여 최종 비디오 생성
+        loop_cmd = [
+            'ffmpeg',
+            '-stream_loop', str(loops_needed - 1),  # 첫 번째 루프는 이미 포함되어 있으므로 -1
+            '-i', single_loop_path,
+            '-t', str(audio_duration),  # 오디오 길이로 자름
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-an',  # 오디오 제거 (최종 비디오에서는 원본 오디오 사용)
             '-y',
             output_temp_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return result.returncode == 0
+        result = subprocess.run(loop_cmd, capture_output=True, text=True)
+        
+        # 임시 파일 삭제
+        if os.path.exists(single_loop_path):
+            os.unlink(single_loop_path)
+            
+        if result.returncode != 0:
+            print(f"⚠️ 루프 비디오 생성 실패: {result.stderr}")
+            return False
+            
+        print(f"✅ 기본 루프 비디오 생성 완료")
+        return True
         
     except Exception as e:
         print(f"❌ 기본 루프 생성 오류: {str(e)}")
@@ -400,6 +473,8 @@ def create_looped_template_video(
             '-crf', '23',
             '-c:a', 'aac',
             '-b:a', '128k',
+            '-map', '0:v',                          # 첫 번째 입력에서 비디오 스트림 사용
+            '-map', '1:a',                          # 두 번째 입력에서 오디오 스트림 사용
             '-t', str(audio_duration),              # 음성 길이로 자름
             '-shortest',
             '-y',
