@@ -2,6 +2,109 @@
 
 ---
 
+## 🎬 **Phase 3.2: 템플릿 기반 비디오 배경 시스템 구현 시작! (2025.05.28)**
+
+### 📋 **전체 구현 로드맵**
+
+#### **Phase 3.2.1**: 기본 템플릿 시스템 구축 (1-2일)
+- 템플릿 비디오 관리 시스템
+- 동적 비디오 길이 감지 및 루프 처리 로직  
+- 기존 자막 시스템과 완벽 통합
+
+#### **Phase 3.2.2**: UI/UX 개선 (1일)
+- 템플릿 선택 인터페이스
+- 미리보기 기능
+- 사용자 경험 최적화
+
+#### **Phase 3.2.3**: 고급 기능 추가 (1일)
+- 다중 템플릿 지원
+- 커스터마이징 옵션
+- 성능 최적화
+
+### 🔧 **핵심 구현 방향**
+
+#### **기존 → 새로운 방식**:
+```python
+# Before: 정적 색상 배경
+'-f', 'lavfi',
+'-i', f'color=c=black:s={config["size"]}:d={duration}'
+
+# After: 동적 비디오 배경 (길이 무관)
+template_duration = get_template_duration(template_path)  # 자동 감지
+loops = calculate_dynamic_loops(audio_duration, template_duration)
+'-stream_loop', str(loops),
+'-i', template_path,
+'-t', str(audio_duration)
+```
+
+#### **핵심 특징**:
+- ✅ **길이 무관**: 25초든 60초든 배경 비디오 길이에 상관없이 작동
+- ✅ **자동 감지**: FFprobe로 배경 비디오 길이 자동 분석
+- ✅ **동적 루프**: 음성 길이에 맞춰 정확한 루프 횟수 계산
+- ✅ **기존 호환**: 자막/음성 시스템 전혀 변경 없이 배경만 교체
+- ✅ **해상도 유지**: 모든 해상도 옵션 그대로 지원
+
+### 🎯 **Phase 3.2.1 우선 구현 목표**
+
+#### **Step 1**: 템플릿 디렉토리 구조
+```
+backend/
+├── templates/
+│   ├── particles_dark.mp4    # 첫 번째 템플릿
+│   ├── template_config.json  # 메타데이터
+│   └── preview/             # 미리보기 이미지
+└── phase3_templates.py       # 템플릿 관리 모듈
+```
+
+#### **Step 2**: 동적 감지 및 루프 시스템
+```python
+def get_template_duration(template_path: str) -> float:
+    """FFprobe로 배경 비디오 길이 자동 감지"""
+    
+def calculate_dynamic_loops(audio_duration: float, template_duration: float):
+    """음성 길이에 맞는 루프 횟수 동적 계산"""
+```
+
+#### **Step 3**: 기존 시스템 통합
+- `create_video_with_subtitles` 함수 확장
+- `background_type: "color" | "template"` 옵션 추가
+- 기존 API 완전 호환성 유지
+
+### 📊 **예상 결과**
+
+#### **Before (현재)**:
+```
+음성 (90초) + 검정 배경 → 단조로운 정적 비디오
+```
+
+#### **After (Phase 3.2.1 완료 후)**:
+```
+음성 (90초) + 움직이는 배경 (자동 루프) → 역동적 전문 비디오
+```
+
+### 🚀 **확장 가능성**
+
+#### **Phase 3.2.2 이후**:
+- **비즈니스용**: 깔끔한 그라데이션 배경
+- **교육용**: 부드러운 기하학적 패턴  
+- **창작용**: 아티스틱한 움직이는 요소
+- **브랜드용**: 로고가 포함된 템플릿
+
+#### **고급 기능**:
+- 템플릿별 자막 스타일 최적화
+- 색상 조합 자동 매칭
+- 사용자 커스텀 템플릿 업로드
+
+### 🎊 **브랜치 준비 완료**
+
+- **현재 브랜치**: `feature/template-video-background`
+- **메인 브랜치**: Phase 2 모든 기능 안전하게 통합 완료
+- **작업 준비**: 템플릿 비디오 배경 기능 구현 시작!
+
+**🌟 목표**: 검정 배경 → 동적 비디오 배경으로 완전 업그레이드! 🚀✨
+
+---
+
 ## 🎯 **Phase 2.9: 화면 중앙 자막 시스템 완료! (2025.05.27)**
 
 ### ✅ **몰입도 극대화를 위한 화면 중앙 자막 위치 구현**
