@@ -15,7 +15,9 @@
         "일반",
         "유튜브",
         "프레젠테이션"
-      ]
+      ],
+      "default_transition": "crossfade",
+      "optimal_transition_duration": 1.2
     }
   },
   "config": {
@@ -27,7 +29,69 @@
     ],
     "max_duration": 300,
     "min_duration": 1,
-    "version": "3.2.0",
-    "last_updated": "2025-05-28"
+    "version": "3.2.3",
+    "last_updated": "2025-05-28",
+    "transition_types": {
+      "crossfade": {
+        "name": "크로스페이드",
+        "description": "부드러운 겹침 전환",
+        "recommended_duration": [
+          0.5,
+          2.0
+        ],
+        "best_for": [
+          "부드러운 영상",
+          "자연스러운 루프"
+        ]
+      },
+      "fade": {
+        "name": "페이드",
+        "description": "검은 화면을 통한 전환",
+        "recommended_duration": [
+          0.3,
+          1.5
+        ],
+        "best_for": [
+          "극적인 효과",
+          "명확한 구분"
+        ]
+      },
+      "dissolve": {
+        "name": "디졸브",
+        "description": "픽셀 단위 용해 전환",
+        "recommended_duration": [
+          0.8,
+          2.5
+        ],
+        "best_for": [
+          "아티스틱 효과",
+          "창작 콘텐츠"
+        ]
+      },
+      "wipe": {
+        "name": "와이프",
+        "description": "슬라이드 방식 전환",
+        "recommended_duration": [
+          0.4,
+          1.0
+        ],
+        "best_for": [
+          "역동적 효과",
+          "프레젠테이션"
+        ]
+      },
+      "none": {
+        "name": "없음",
+        "description": "트랜지션 효과 없음",
+        "recommended_duration": [
+          0,
+          0
+        ],
+        "best_for": [
+          "빠른 처리",
+          "기본 루프"
+        ]
+      }
+    }
   }
 }

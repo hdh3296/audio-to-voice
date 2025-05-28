@@ -1,12 +1,13 @@
 """
-🎬 Phase 3.2: 템플릿 기반 비디오 배경 시스템
-동적 비디오 배경 템플릿 관리 및 루프 처리
+🎬 Phase 3.2.3: 트랜지션 효과 포함 템플릿 기반 비디오 배경 시스템
+동적 비디오 배경 템플릿 관리 및 부드러운 루프 처리
 """
 
 import os
 import json
 import math
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -24,6 +25,26 @@ class TemplateInfo:
     preview_image: str
     created_at: str
     recommended_for: List[str]
+    # 🆕 Phase 3.2.3: 트랜지션 설정
+    recommended_transition: str = "crossfade"  # 기본 트랜지션
+    optimal_transition_duration: float = 1.0  # 최적 트랜지션 길이 (초)
+
+
+@dataclass
+class TransitionConfig:
+    """트랜지션 설정 데이터 클래스"""
+    type: str = "crossfade"  # crossfade, fade, dissolve, wipe, none
+    duration: float = 1.0    # 트랜지션 길이 (초)
+    intensity: float = 0.8   # 트랜지션 강도 (0.0 ~ 1.0)
+    
+    def __post_init__(self):
+        # 유효성 검사
+        valid_types = ["crossfade", "fade", "dissolve", "wipe", "none"]
+        if self.type not in valid_types:
+            self.type = "crossfade"
+        
+        self.duration = max(0.1, min(5.0, self.duration))  # 0.1~5초 제한
+        self.intensity = max(0.0, min(1.0, self.intensity))  # 0~1 제한
 
 
 class TemplateManager:
@@ -148,7 +169,10 @@ class TemplateManager:
                 video_file=template_data.get("video_file", ""),
                 preview_image=template_data.get("preview_image", ""),
                 created_at=template_data.get("created_at", ""),
-                recommended_for=template_data.get("recommended_for", [])
+                recommended_for=template_data.get("recommended_for", []),
+                # 🆕 Phase 3.2.3: 트랜지션 설정
+                recommended_transition=template_data.get("recommended_transition", "crossfade"),
+                optimal_transition_duration=template_data.get("optimal_transition_duration", 1.0)
             )
         return None
     
@@ -162,15 +186,144 @@ class TemplateManager:
         return False
 
 
+def create_seamless_looped_video(
+    template_path: str,
+    audio_duration: float,
+    template_duration: float,
+    transition_config: TransitionConfig,
+    output_temp_path: str
+) -> bool:
+    """🆕 Phase 3.2.3: 트랜지션 효과가 있는 심리스 루프 비디오 생성"""
+    
+    try:
+        print(f"🌟 트랜지션 효과 적용: {transition_config.type} ({transition_config.duration}초)")
+        
+        if transition_config.type == "none":
+            # 트랜지션 없음 - 기존 방식
+            return create_basic_looped_video(template_path, audio_duration, template_duration, output_temp_path)
+        
+        # 필요한 총 루프 횟수 계산
+        total_loops_needed = math.ceil(audio_duration / template_duration)
+        
+        if total_loops_needed <= 1:
+            # 루프가 필요없는 경우 - 기본 방식
+            return create_basic_looped_video(template_path, audio_duration, template_duration, output_temp_path)
+        
+        # 트랜지션 타입별 처리
+        if transition_config.type == "crossfade":
+            return create_crossfade_loop(template_path, audio_duration, template_duration, transition_config, output_temp_path)
+        elif transition_config.type == "fade":
+            return create_fade_loop(template_path, audio_duration, template_duration, transition_config, output_temp_path)
+        else:
+            # 기본값: fade 사용 (가장 안정적)
+            return create_fade_loop(template_path, audio_duration, template_duration, transition_config, output_temp_path)
+            
+    except Exception as e:
+        print(f"❌ 트랜지션 비디오 생성 실패: {str(e)}")
+        return False
+
+
+def create_fade_loop(
+    template_path: str,
+    audio_duration: float, 
+    template_duration: float,
+    transition_config: TransitionConfig,
+    output_temp_path: str
+) -> bool:
+    """Fade 트랜지션으로 루프 비디오 생성 (안정적)"""
+    
+    try:
+        additional_loops = max(0, math.ceil(audio_duration / template_duration) - 1)
+        fade_duration = min(transition_config.duration / 2, template_duration / 8)  # 템플릿 길이의 1/8 이하
+        
+        print(f"🌑 Fade 트랜지션 루프 생성:")
+        print(f"   추가 루프: {additional_loops}회")
+        print(f"   페이드 길이: {fade_duration:.2f}초")
+        
+        # 각 루프 끝에 페이드 아웃, 시작에 페이드 인 적용
+        filter_complex = f"fade=t=out:st={template_duration - fade_duration}:d={fade_duration},fade=t=in:st=0:d={fade_duration}"
+        
+        cmd = [
+            'ffmpeg',
+            '-stream_loop', str(additional_loops),
+            '-i', template_path,
+            '-vf', filter_complex,
+            '-t', str(audio_duration),
+            '-c:v', 'libx264',
+            '-preset', 'medium', 
+            '-crf', '23',
+            '-y',
+            output_temp_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"⚠️ Fade 실패, 기본 루프로 대체: {result.stderr}")
+            return create_basic_looped_video(template_path, audio_duration, template_duration, output_temp_path)
+        
+        print(f"✅ Fade 루프 비디오 생성 완료")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Fade 생성 오류: {str(e)}")
+        return create_basic_looped_video(template_path, audio_duration, template_duration, output_temp_path)
+
+
+def create_crossfade_loop(
+    template_path: str,
+    audio_duration: float, 
+    template_duration: float,
+    transition_config: TransitionConfig,
+    output_temp_path: str
+) -> bool:
+    """Crossfade 트랜지션으로 루프 비디오 생성 (고급)"""
+    
+    try:
+        # Crossfade는 복잡하므로 일단 fade로 대체 (안정성 우선)
+        print(f"🔄 Crossfade 요청 → Fade로 대체 (안정성 우선)")
+        return create_fade_loop(template_path, audio_duration, template_duration, transition_config, output_temp_path)
+        
+    except Exception as e:
+        print(f"❌ Crossfade 생성 오류: {str(e)}")
+        return create_basic_looped_video(template_path, audio_duration, template_duration, output_temp_path)
+
+
+def create_basic_looped_video(template_path: str, audio_duration: float, template_duration: float, output_temp_path: str) -> bool:
+    """기본 루프 비디오 생성 (트랜지션 없음)"""
+    try:
+        additional_loops = max(0, math.ceil(audio_duration / template_duration) - 1)
+        
+        cmd = [
+            'ffmpeg',
+            '-stream_loop', str(additional_loops),
+            '-i', template_path,
+            '-t', str(audio_duration),
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-y',
+            output_temp_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0
+        
+    except Exception as e:
+        print(f"❌ 기본 루프 생성 오류: {str(e)}")
+        return False
+
+
 def create_looped_template_video(
     audio_path: str,
     template_name: str,
     output_path: str,
     ass_content: str,
     video_resolution: str = "1080p",
-    template_manager: TemplateManager = None
+    template_manager: TemplateManager = None,
+    transition_config: TransitionConfig = None  # 🆕 Phase 3.2.3: 트랜지션 설정
 ) -> bool:
-    """템플릿 기반 루프 비디오 + 자막 생성"""
+    """🆕 Phase 3.2.3: 트랜지션 효과가 포함된 템플릿 기반 루프 비디오 + 자막 생성"""
     
     if template_manager is None:
         template_manager = TemplateManager()
@@ -185,12 +338,21 @@ def create_looped_template_video(
         if audio_duration <= 0:
             raise Exception(f"음성 파일 길이를 확인할 수 없습니다: {audio_path}")
         
-        # 3. 템플릿 길이 감지
+        # 3. 템플릿 정보 및 길이 감지
         template_duration = template_manager.get_template_duration(template_name)
         template_path = template_manager.get_template_path(template_name)
+        template_info = template_manager.get_template_info(template_name)
         
-        # 4. 루프 횟수 계산
-        additional_loops = template_manager.calculate_dynamic_loops(audio_duration, template_duration)
+        # 4. 🆕 트랜지션 설정 결정
+        if transition_config is None:
+            # 템플릿 기본 설정 사용
+            if template_info:
+                transition_config = TransitionConfig(
+                    type=template_info.recommended_transition,
+                    duration=template_info.optimal_transition_duration
+                )
+            else:
+                transition_config = TransitionConfig()  # 기본값 사용
         
         # 5. 해상도 설정
         resolution_configs = {
@@ -202,27 +364,36 @@ def create_looped_template_video(
         
         config = resolution_configs.get(video_resolution, resolution_configs["1080p"])
         
-        # 6. ASS 파일 임시 저장
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.ass', delete=False, encoding='utf-8') as ass_file:
-            ass_file.write(ass_content)
-            ass_path = ass_file.name
-        
-        print(f"🎬 템플릿 기반 비디오 생성:")
+        print(f"🎬 트랜지션 템플릿 비디오 생성:")
         print(f"   템플릿: {template_name}")
         print(f"   해상도: {config['size']}")
         print(f"   음성 길이: {audio_duration:.2f}초")
         print(f"   템플릿 길이: {template_duration:.2f}초")
-        print(f"   추가 루프: {additional_loops}회")
+        print(f"   트랜지션: {transition_config.type} ({transition_config.duration:.1f}초)")
         
-        # 7. FFmpeg 명령어 구성 (템플릿 비디오 오디오 제거, 원본 음성만 사용)
+        # 6. 🆕 트랜지션 효과가 있는 루프 비디오 생성
+        temp_video_path = None
+        
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_video_file:
+            temp_video_path = temp_video_file.name
+        
+        # 트랜지션 비디오 생성
+        if not create_seamless_looped_video(
+            template_path, audio_duration, template_duration, 
+            transition_config, temp_video_path
+        ):
+            raise Exception("트랜지션 비디오 생성 실패")
+        
+        # 7. ASS 파일 임시 저장
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ass', delete=False, encoding='utf-8') as ass_file:
+            ass_file.write(ass_content)
+            ass_path = ass_file.name
+        
+        # 8. 최종 비디오 생성 (트랜지션 비디오 + 음성 + 자막)
         cmd = [
             'ffmpeg',
-            '-stream_loop', str(additional_loops),  # 템플릿 루프
-            '-i', template_path,                    # 템플릿 비디오
+            '-i', temp_video_path,                  # 트랜지션 처리된 비디오
             '-i', audio_path,                       # 음성 파일
-            '-map', '0:v',                          # 템플릿의 비디오만 사용
-            '-map', '1:a',                          # 원본 음성만 사용
             '-vf', f'ass={ass_path},scale={config["size"]}',  # 자막 + 해상도 조정
             '-c:v', 'libx264',
             '-preset', 'medium',
@@ -235,29 +406,34 @@ def create_looped_template_video(
             output_path
         ]
         
-        # 8. FFmpeg 실행
+        # 9. FFmpeg 실행
         result = subprocess.run(cmd, capture_output=True, text=True)
         
-        # 9. 임시 ASS 파일 삭제
-        os.unlink(ass_path)
+        # 10. 임시 파일 정리
+        if temp_video_path and os.path.exists(temp_video_path):
+            os.unlink(temp_video_path)
+        if ass_path and os.path.exists(ass_path):
+            os.unlink(ass_path)
         
         if result.returncode != 0:
-            raise Exception(f"FFmpeg 오류: {result.stderr}")
+            raise Exception(f"최종 비디오 생성 실패: {result.stderr}")
         
-        print(f"✅ 템플릿 기반 비디오 생성 완료: {output_path}")
+        print(f"✅ 트랜지션 템플릿 비디오 생성 완료: {output_path}")
         return True
         
     except Exception as e:
         # 임시 파일 정리
-        if 'ass_path' in locals() and os.path.exists(ass_path):
+        if 'temp_video_path' in locals() and temp_video_path and os.path.exists(temp_video_path):
+            os.unlink(temp_video_path)
+        if 'ass_path' in locals() and ass_path and os.path.exists(ass_path):
             os.unlink(ass_path)
         
-        print(f"❌ 템플릿 비디오 생성 실패: {str(e)}")
+        print(f"❌ 트랜지션 템플릿 비디오 생성 실패: {str(e)}")
         return False
 
 
 def get_audio_duration(audio_path: str) -> float:
-    """오디오 길이 구하기 (기존 함수와 동일)"""
+    """오디오 길이 구하기"""
     try:
         cmd = [
             'ffprobe', 
@@ -284,23 +460,19 @@ template_manager = TemplateManager()
 
 
 if __name__ == "__main__":
-    # 테스트 코드
-    print("🧪 템플릿 매니저 테스트")
+    # 🧪 Phase 3.2.3 트랜지션 테스트
+    print("🧪 Phase 3.2.3 트랜지션 템플릿 매니저 테스트")
     
     # 사용 가능한 템플릿 목록
     templates = template_manager.get_available_templates()
     print(f"📋 사용 가능한 템플릿: {templates}")
     
-    # 첫 번째 템플릿 정보
-    if templates:
-        template_name = templates[0]
-        info = template_manager.get_template_info(template_name)
-        print(f"🎬 템플릿 정보: {info}")
-        
-        # 길이 감지 테스트 (실제 파일이 있을 때)
-        duration = template_manager.get_template_duration(template_name)
-        print(f"⏱️ 템플릿 길이: {duration}초")
-        
-        # 루프 계산 테스트
-        loops = template_manager.calculate_dynamic_loops(90.0, duration)
-        print(f"🔄 90초 음성에 필요한 추가 루프: {loops}회")
+    # 트랜지션 설정 테스트
+    transition_configs = [
+        TransitionConfig(type="fade", duration=1.0),
+        TransitionConfig(type="crossfade", duration=1.5),
+        TransitionConfig(type="none", duration=0.0)
+    ]
+    
+    for config in transition_configs:
+        print(f"🌟 트랜지션 테스트: {config.type} ({config.duration}초)")

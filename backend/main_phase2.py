@@ -29,8 +29,8 @@ from phase2_streaming import StreamingTranscriber, StreamingProgress
 from phase2_quality import QualityAnalyzer, AutoReprocessor
 from phase2_postprocessing import Phase2PostProcessor
 
-# 🆕 Phase 3.2: 템플릿 시스템 임포트
-from phase3_templates import TemplateManager, create_looped_template_video
+# 🆕 Phase 3.2: 템플릿 시스템 임포트 (Phase 3.2.3 트랜지션 포함)
+from phase3_templates import TemplateManager, create_looped_template_video, TransitionConfig, TransitionConfig, TransitionConfig
 
 # 환경변수 로드
 load_dotenv()
@@ -484,7 +484,9 @@ async def get_templates():
         return {
             "available_templates": template_info,
             "total_count": len(templates),
-            "default_template": "particles_dark"
+            "default_template": "particles_dark",
+            # 🆕 Phase 3.2.3: 트랜지션 정보 추가
+            "transition_types": template_manager.templates_data.get("config", {}).get("transition_types", {})
         }
     
     except Exception as e:
@@ -534,6 +536,10 @@ async def generate_subtitles_template(
     language: str = "ko",
     template_name: str = "particles_dark",  # 🆕 템플릿 선택
     video_resolution: str = "1080p",
+    # 🆕 Phase 3.2.3: 트랜지션 설정
+    transition_type: str = "crossfade",     # crossfade, fade, dissolve, wipe, none
+    transition_duration: float = 1.2,      # 트랜지션 길이 (초)
+    transition_intensity: float = 0.8,     # 트랜지션 강도 (0.0~1.0)
     enable_quality_analysis: bool = True,
     enable_auto_reprocessing: bool = True,
     enable_gpt_postprocessing: bool = True,
